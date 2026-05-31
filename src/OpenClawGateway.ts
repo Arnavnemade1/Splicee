@@ -176,6 +176,12 @@ export class OpenClawGateway {
           break;
         }
 
+        case 'capture_clean_screenshot': {
+          const screenshot = await this.browser.captureCleanScreenshot();
+          result = { screenshot: `data:image/png;base64,${screenshot}` };
+          break;
+        }
+
         case 'session_status': {
           result = {
             url: this.browser.getActivePage().url(),

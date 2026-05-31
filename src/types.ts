@@ -8,6 +8,7 @@ export interface SemanticNode {
   attributes?: Record<string, string>;
   children?: SemanticNode[];
   score?: number;
+  rect?: { x: number; y: number; width: number; height: number };
   
   // Lens-specific metadata
   securityFlags?: string[]; // E.g., 'hidden-input', 'external-script', 'insecure-form'

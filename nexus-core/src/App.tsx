@@ -1,25 +1,46 @@
 import { useState } from 'react';
+import type { FormEvent } from 'react';
 import './App.css';
+import { useSpliceGateway } from './hooks/useSpliceGateway';
+import type { SemanticNode } from './hooks/useSpliceGateway';
 
-// Mock Data
-const MOCK_HIGHLIGHTS = [
-  { id: 'btn-1', type: 'safe', x: 75, y: 30, w: 120, h: 40, label: 'Safe Click', confidence: '99%' },
-  { id: 'input-email', type: 'risky', x: 40, y: 50, w: 300, h: 45, label: 'Form Input', confidence: '82%' },
-  { id: 'modal-overlay', type: 'blocker', x: 50, y: 50, w: 400, h: 300, isCenter: true, label: 'Obstruction', confidence: '94%' },
-];
-
-const MOCK_TIMELINE = [
-  { id: 't1', time: '10:42:01', title: 'Navigation started', agent: 'Explorer', status: 'past' },
-  { id: 't2', time: '10:42:04', title: 'Page stabilized', agent: 'Verifier', status: 'past' },
-  { id: 't3', time: '10:42:05', title: 'Modal detected', agent: 'Auditor', status: 'past', isAlert: true },
-  { id: 't4', time: '10:42:07', title: 'Evaluating dismiss paths', agent: 'Executor', status: 'active' },
-  { id: 't5', time: '10:42:08', title: 'Alternative: Fill modal', agent: 'Executor', status: 'parallel' },
-];
+function flattenTree(node: SemanticNode): SemanticNode[] {
+  let nodes: SemanticNode[] = [];
+  if (node.rect) {
+    nodes.push(node);
+  }
+  if (node.children) {
+    node.children.forEach(child => {
+      nodes = nodes.concat(flattenTree(child));
+    });
+  }
+  return nodes;
+}
 
 function App() {
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showHighlights, setShowHighlights] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+
+  const {
+    connected,
+    sessionStatus,
+    screenshot,
+    semanticTree,
+    diagnosis,
+    navigate
+  } = useSpliceGateway(18789);
+
+  const handleNavigate = (e: FormEvent) => {
+    e.preventDefault();
+    if (urlInput) {
+      navigate(urlInput);
+    }
+  };
+
+  const semanticNodes = semanticTree ? flattenTree(semanticTree) : [];
+  const feed = sessionStatus?.liveFeed?.feed || [];
 
   return (
     <div className="app-container">
@@ -33,9 +54,9 @@ function App() {
           </div>
         </div>
         <div className="header-status">
-          <div className="status-badge">
-            <div className="status-dot pulse-green"></div>
-            System Online • 5 Agents Active
+          <div className="status-badge" style={{ backgroundColor: connected ? 'var(--accent-green-bg)' : 'var(--accent-red-bg)', color: connected ? 'var(--accent-green)' : 'var(--accent-red)', borderColor: connected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)' }}>
+            <div className={`status-dot ${connected ? 'pulse-green' : ''}`} style={{ backgroundColor: connected ? 'var(--accent-green)' : 'var(--accent-red)' }}></div>
+            {connected ? 'System Online • Gateway Connected' : 'Disconnected from Gateway'}
           </div>
         </div>
       </header>
@@ -46,22 +67,24 @@ function App() {
         {/* Left Sidebar: Timeline View */}
         <aside className="sidebar">
           <div className="panel-header">
-            Parallel Timeline
+            Live Telemetry
           </div>
           <div className="timeline-list">
             <div className="timeline-track">
-              {MOCK_TIMELINE.map(event => (
-                <div key={event.id} className={`timeline-event ${event.status === 'active' ? 'active' : ''}`} style={{ opacity: event.status === 'parallel' ? 0.7 : 1 }}>
-                  <div className="event-time">{event.time}</div>
-                  <div className="event-title" style={{ color: event.isAlert ? 'var(--accent-red)' : 'inherit' }}>
-                    {event.title}
+              {feed.length > 0 ? feed.map((event: any, i: number) => (
+                <div key={i} className={`timeline-event ${i === 0 ? 'active' : ''}`}>
+                  <div className="event-time">{new Date(event.timestamp || Date.now()).toLocaleTimeString()}</div>
+                  <div className="event-title">
+                    {event.detail || event.type}
                   </div>
                   <div className="event-agent">
                     <span style={{width: 6, height: 6, borderRadius: '50%', background: 'currentColor'}}></span>
-                    {event.agent}
+                    {event.type}
                   </div>
                 </div>
-              ))}
+              )) : (
+                <div style={{color: 'var(--text-tertiary)', fontSize: 12, padding: 16}}>No telemetry data yet. Connect to a session.</div>
+              )}
             </div>
           </div>
         </aside>
@@ -74,34 +97,59 @@ function App() {
               <div className="control-dot yellow"></div>
               <div className="control-dot green"></div>
             </div>
-            <div className="url-bar">
-              https://demo.acmecorp.com/dashboard
-            </div>
+            <form onSubmit={handleNavigate} style={{ flex: 1, display: 'flex' }}>
+              <input 
+                className="url-bar"
+                style={{ width: '100%', outline: 'none' }}
+                value={urlInput}
+                onChange={e => setUrlInput(e.target.value)}
+                placeholder={sessionStatus?.url || "Enter URL and press Enter..."}
+              />
+            </form>
           </div>
           
-          <div className="viewport-container">
+          <div className="viewport-container" style={{
+            backgroundImage: screenshot ? `url(${screenshot})` : 'none',
+            backgroundSize: 'contain',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center top',
+            alignItems: 'flex-start'
+          }}>
+            {!screenshot && <div style={{marginTop: '20%', color: 'var(--text-tertiary)'}}>Waiting for vision feed...</div>}
+            
             {showHeatmap && <div className="heatmap-canvas animate-fade-in"></div>}
             
-            {showHighlights && MOCK_HIGHLIGHTS.map(hl => (
-              <div 
-                key={hl.id} 
-                className={`highlight-box ${hl.type} animate-fade-in`}
-                style={hl.isCenter ? {
-                  left: '50%', top: '50%', 
-                  width: hl.w, height: hl.h,
-                  transform: 'translate(-50%, -50%)'
-                } : {
-                  left: `${hl.x}%`, top: `${hl.y}%`,
-                  width: hl.w, height: hl.h
-                }}
-              >
-                <div className="highlight-tooltip">
-                  {hl.label} <span className="confidence high">{hl.confidence}</span>
-                </div>
-              </div>
-            ))}
+            {showHighlights && semanticNodes.map((node) => {
+              if (!node.rect) return null;
+              
+              // Scale coordinates assuming the screenshot is rendered at a specific scale or 1:1.
+              // For a robust implementation, you'd calculate the scale factor based on viewport size vs screenshot size.
+              // Here we assume absolute positioning over a 1:1 image container or top-left aligned container.
+              const { x, y, width, height } = node.rect;
+              const isRisky = node.securityFlags && node.securityFlags.length > 0;
+              const typeClass = isRisky ? 'risky' : 'safe';
 
-            <div className="view-toggles glass-panel">
+              return (
+                <div 
+                  key={node.id} 
+                  className={`highlight-box ${typeClass} animate-fade-in`}
+                  style={{
+                    left: `${x}px`, 
+                    top: `${y}px`,
+                    width: `${width}px`, 
+                    height: `${height}px`,
+                    position: 'absolute'
+                  }}
+                  title={node.text || node.attributes?.['aria-label'] || node.type}
+                >
+                  <div className="highlight-tooltip">
+                    {node.text ? node.text.substring(0, 15) : node.type} <span className="confidence high">100%</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="view-toggles glass-panel" style={{position: 'absolute', bottom: 20}}>
               <button 
                 className={`toggle-btn ${showHighlights ? 'active' : ''}`}
                 onClick={() => setShowHighlights(!showHighlights)}
@@ -127,28 +175,19 @@ function App() {
           </div>
           
           <div className="prediction-panel">
-            {/* Memory & Prediction */}
+            {/* Live Diagnosis */}
             <div className="insight-card animate-fade-in">
-              <div className="insight-header">
-                <svg className="insight-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-                <span className="insight-title">Prediction Engine</span>
-              </div>
-              <div className="insight-body">
-                "87% chance a subscription modal appears after filling email — pre-computing dismiss sequence."
-              </div>
-              <div className="insight-metric">
-                <span className="metric-value">87%</span>
-                <span className="metric-label">Confidence</span>
-              </div>
-            </div>
-
-            <div className="insight-card animate-fade-in" style={{animationDelay: '0.1s'}}>
               <div className="insight-header">
                 <svg className="insight-icon" style={{color: 'var(--accent-green)'}} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
                 <span className="insight-title">State Forensics</span>
               </div>
               <div className="insight-body">
-                Agent execution is currently blocked by a UI obstruction (z-index: 9999).
+                {diagnosis ? (
+                  <>
+                    State: <strong>{diagnosis.state}</strong><br />
+                    {diagnosis.summary}
+                  </>
+                ) : 'Awaiting diagnostics...'}
               </div>
               
               <div className="action-grid">
@@ -156,13 +195,9 @@ function App() {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="21" y1="21" x2="15" y2="15"></line><line x1="9" y1="8" x2="15" y2="14"></line><line x1="15" y1="8" x2="9" y2="14"></line></svg>
                   Analyze
                 </button>
-                <button className="btn-primary">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                  Dismiss
-                </button>
               </div>
             </div>
-            
+
             {/* Explanations Trigger */}
             <div style={{marginTop: 'auto', paddingTop: '20px'}}>
               <button 
@@ -183,19 +218,19 @@ function App() {
       <div className={`modal-overlay ${modalOpen ? 'open' : ''}`} onClick={() => setModalOpen(false)}>
         <div className="modal-content" onClick={e => e.stopPropagation()}>
           <div className="modal-header">
-            <div className="modal-title">Action Audit Report</div>
+            <div className="modal-title">Live Diagnostics</div>
             <button className="modal-close" onClick={() => setModalOpen(false)}>&times;</button>
           </div>
           <div className="modal-body">
-            <h3 style={{marginBottom: 12, fontSize: 18}}>Obstruction Detected</h3>
+            <h3 style={{marginBottom: 12, fontSize: 18}}>Current Session State</h3>
             <p style={{color: 'var(--text-secondary)', marginBottom: 24, fontSize: 14}}>
-              The agent was attempting to input text into the email field, but a promotional modal intercepted the click. 
-              The system successfully halted the action and prepared a dismiss sequence.
+              {diagnosis?.summary || 'No recent diagnosis.'}
             </p>
             
-            <div style={{background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, border: '1px solid var(--border-subtle)', marginBottom: 20}}>
-              <div style={{fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--accent-green)', marginBottom: 8}}>{`{ "state": "ui_obstruction", "confidence": 0.94 }`}</div>
-              <div style={{fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--text-tertiary)'}}>// Recommended recovery action: compile_verified_action ("close/dismiss control")</div>
+            <div style={{background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, border: '1px solid var(--border-subtle)', marginBottom: 20, maxHeight: 300, overflowY: 'auto'}}>
+              <pre style={{fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--accent-green)', margin: 0, whiteSpace: 'pre-wrap'}}>
+                {JSON.stringify(diagnosis, null, 2)}
+              </pre>
             </div>
             
             <button className="btn-primary" onClick={() => setModalOpen(false)}>Acknowledge & Close</button>

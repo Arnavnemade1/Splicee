@@ -984,6 +984,12 @@ export class BrowserManager {
     return buffer.toString('base64');
   }
 
+  async captureCleanScreenshot(): Promise<string> {
+    const page = this.getActivePage();
+    const buffer = await page.screenshot({ fullPage: false });
+    return buffer.toString('base64');
+  }
+
   // -------------------------
   // SNAPSHOT VAULT (ENCRYPTED)
   // -------------------------

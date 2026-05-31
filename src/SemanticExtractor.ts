@@ -111,11 +111,18 @@ export class SemanticExtractor {
 
           if (shouldExtract) {
             const id = utils.generateId(node);
+            const rect = node.getBoundingClientRect();
             const semanticNode: SemanticNode = {
               id,
               type: isInteractive ? 'interactive' : (tagName === 'script' || tagName === 'form' ? 'technical' : 'content'),
               attributes: {
                 tagName: tagName
+              },
+              rect: {
+                x: rect.x + window.scrollX,
+                y: rect.y + window.scrollY,
+                width: rect.width,
+                height: rect.height
               }
             };
 
