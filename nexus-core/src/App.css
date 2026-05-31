@@ -60,17 +60,15 @@
   gap: 8px;
   padding: 6px 12px;
   border-radius: 20px;
-  background: var(--accent-green-bg);
-  color: var(--accent-green);
   font-size: 12px;
   font-weight: 600;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 1px solid;
+  transition: all 0.3s ease;
 }
 
 .status-dot {
   width: 8px;
   height: 8px;
-  background: var(--accent-green);
   border-radius: 50%;
 }
 
@@ -107,6 +105,31 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.demo-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--accent-purple);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.demo-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent-purple);
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.2);
 }
 
 /* Center View (Live Overlay) */
@@ -163,19 +186,42 @@
   position: relative;
   overflow: hidden;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  background: #1e1e1e;
-  background-image: url('https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=2070&auto=format&fit=crop'); /* Placeholder dashboard background */
-  background-size: cover;
-  background-position: center;
+  background: #0a0a12;
 }
 
-.viewport-container::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+.viewport-screenshot {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: top center;
+}
+
+.empty-viewport {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20%;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.empty-viewport-icon {
+  opacity: 0.3;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  padding: 24px 16px;
+  text-align: center;
 }
 
 /* Smart Highlights */
@@ -192,19 +238,33 @@
   justify-content: flex-start;
 }
 
-.highlight-box:hover {
+.highlight-box:hover,
+.highlight-box.hovered {
   background: rgba(255, 255, 255, 0.2);
   z-index: 10;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
 }
 
 .highlight-box.safe {
   border-color: var(--accent-green);
-  background: rgba(16, 185, 129, 0.15);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.highlight-box.safe:hover,
+.highlight-box.safe.hovered {
+  background: rgba(16, 185, 129, 0.25);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
 }
 
 .highlight-box.risky {
   border-color: var(--accent-yellow);
-  background: rgba(234, 179, 8, 0.15);
+  background: rgba(234, 179, 8, 0.12);
+}
+
+.highlight-box.risky:hover,
+.highlight-box.risky.hovered {
+  background: rgba(234, 179, 8, 0.25);
+  box-shadow: 0 0 12px rgba(234, 179, 8, 0.2);
 }
 
 .highlight-box.blocker {
@@ -231,9 +291,15 @@
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
 
-.highlight-box:hover .highlight-tooltip {
+.highlight-box:hover .highlight-tooltip,
+.highlight-box.hovered .highlight-tooltip {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+.tooltip-type {
+  color: var(--accent-blue);
+  font-weight: 600;
 }
 
 .confidence {
@@ -340,6 +406,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  flex: 1;
 }
 
 .insight-card {
@@ -379,6 +446,56 @@
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.6;
+}
+
+.diagnosis-metrics {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.mini-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mini-metric-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-blue);
+}
+
+.mini-metric-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+}
+
+.recommendations-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.recommendations-list li {
+  padding: 4px 0;
+  padding-left: 16px;
+  position: relative;
+}
+
+.recommendations-list li::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  color: var(--accent-yellow);
 }
 
 .insight-metric {

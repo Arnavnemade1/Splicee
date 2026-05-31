@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import './App.css';
 import { useSpliceGateway } from './hooks/useSpliceGateway';
@@ -22,15 +22,35 @@ function App() {
   const [showHighlights, setShowHighlights] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [urlInput, setUrlInput] = useState('');
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [scale, setScale] = useState(1);
 
   const {
     connected,
+    demoMode,
     sessionStatus,
     screenshot,
     semanticTree,
     diagnosis,
     navigate
-  } = useSpliceGateway(18789);
+  } = useSpliceGateway();
+
+  // Calculate scale factor when screenshot / viewport size changes
+  useEffect(() => {
+    if (!viewportRef.current || !imgRef.current) return;
+    const updateScale = () => {
+      if (imgRef.current && imgRef.current.naturalWidth > 0) {
+        const s = imgRef.current.clientWidth / imgRef.current.naturalWidth;
+        setScale(s);
+      }
+    };
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(viewportRef.current);
+    imgRef.current.addEventListener('load', updateScale);
+    return () => observer.disconnect();
+  }, [screenshot]);
 
   const handleNavigate = (e: FormEvent) => {
     e.preventDefault();
@@ -41,6 +61,15 @@ function App() {
 
   const semanticNodes = semanticTree ? flattenTree(semanticTree) : [];
   const feed = sessionStatus?.liveFeed?.feed || [];
+
+  const isOnline = connected && !demoMode;
+  const statusLabel = isOnline
+    ? 'System Online • Gateway Connected'
+    : demoMode
+    ? 'Demo Mode • Simulated Telemetry'
+    : 'Connecting to Gateway…';
+  const statusColor = isOnline ? 'var(--accent-green)' : demoMode ? 'var(--accent-purple)' : 'var(--accent-yellow)';
+  const statusBg = isOnline ? 'var(--accent-green-bg)' : demoMode ? 'rgba(139,92,246,0.1)' : 'var(--accent-yellow-bg)';
 
   return (
     <div className="app-container">
@@ -54,36 +83,50 @@ function App() {
           </div>
         </div>
         <div className="header-status">
-          <div className="status-badge" style={{ backgroundColor: connected ? 'var(--accent-green-bg)' : 'var(--accent-red-bg)', color: connected ? 'var(--accent-green)' : 'var(--accent-red)', borderColor: connected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)' }}>
-            <div className={`status-dot ${connected ? 'pulse-green' : ''}`} style={{ backgroundColor: connected ? 'var(--accent-green)' : 'var(--accent-red)' }}></div>
-            {connected ? 'System Online • Gateway Connected' : 'Disconnected from Gateway'}
+          <div
+            className="status-badge"
+            style={{
+              backgroundColor: statusBg,
+              color: statusColor,
+              borderColor: `${statusColor}33`,
+            }}
+          >
+            <div
+              className={`status-dot ${isOnline ? 'pulse-green' : demoMode ? 'pulse-purple' : ''}`}
+              style={{ backgroundColor: statusColor }}
+            ></div>
+            {statusLabel}
           </div>
         </div>
       </header>
 
       {/* Main Layout */}
       <main className="main-content">
-        
+
         {/* Left Sidebar: Timeline View */}
         <aside className="sidebar">
           <div className="panel-header">
             Live Telemetry
+            {demoMode && <span className="demo-tag">SIMULATED</span>}
           </div>
           <div className="timeline-list">
             <div className="timeline-track">
               {feed.length > 0 ? feed.map((event: any, i: number) => (
-                <div key={i} className={`timeline-event ${i === 0 ? 'active' : ''}`}>
+                <div key={i} className={`timeline-event ${i === 0 ? 'active' : ''} animate-fade-in`}>
                   <div className="event-time">{new Date(event.timestamp || Date.now()).toLocaleTimeString()}</div>
                   <div className="event-title">
                     {event.detail || event.type}
                   </div>
                   <div className="event-agent">
-                    <span style={{width: 6, height: 6, borderRadius: '50%', background: 'currentColor'}}></span>
+                    <span style={{width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block'}}></span>
                     {event.type}
                   </div>
                 </div>
               )) : (
-                <div style={{color: 'var(--text-tertiary)', fontSize: 12, padding: 16}}>No telemetry data yet. Connect to a session.</div>
+                <div className="empty-state">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                  <span>{demoMode ? 'Initializing simulation…' : 'Waiting for backend connection…'}</span>
+                </div>
               )}
             </div>
           </div>
@@ -98,7 +141,7 @@ function App() {
               <div className="control-dot green"></div>
             </div>
             <form onSubmit={handleNavigate} style={{ flex: 1, display: 'flex' }}>
-              <input 
+              <input
                 className="url-bar"
                 style={{ width: '100%', outline: 'none' }}
                 value={urlInput}
@@ -106,58 +149,77 @@ function App() {
                 placeholder={sessionStatus?.url || "Enter URL and press Enter..."}
               />
             </form>
+            {demoMode && (
+              <div className="demo-indicator">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                DEMO
+              </div>
+            )}
           </div>
-          
-          <div className="viewport-container" style={{
-            backgroundImage: screenshot ? `url(${screenshot})` : 'none',
-            backgroundSize: 'contain',
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'center top',
-            alignItems: 'flex-start'
-          }}>
-            {!screenshot && <div style={{marginTop: '20%', color: 'var(--text-tertiary)'}}>Waiting for vision feed...</div>}
-            
+
+          <div className="viewport-container" ref={viewportRef}>
+            {screenshot ? (
+              <img
+                ref={imgRef}
+                src={screenshot}
+                alt="Live viewport capture"
+                className="viewport-screenshot"
+              />
+            ) : (
+              <div className="empty-viewport">
+                <div className="empty-viewport-icon">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                </div>
+                <span>Waiting for vision feed…</span>
+              </div>
+            )}
+
             {showHeatmap && <div className="heatmap-canvas animate-fade-in"></div>}
-            
+
             {showHighlights && semanticNodes.map((node) => {
               if (!node.rect) return null;
-              
-              // Scale coordinates assuming the screenshot is rendered at a specific scale or 1:1.
-              // For a robust implementation, you'd calculate the scale factor based on viewport size vs screenshot size.
-              // Here we assume absolute positioning over a 1:1 image container or top-left aligned container.
               const { x, y, width, height } = node.rect;
               const isRisky = node.securityFlags && node.securityFlags.length > 0;
               const typeClass = isRisky ? 'risky' : 'safe';
+              const isHovered = hoveredNode === node.id;
 
               return (
-                <div 
-                  key={node.id} 
-                  className={`highlight-box ${typeClass} animate-fade-in`}
+                <div
+                  key={node.id}
+                  className={`highlight-box ${typeClass} ${isHovered ? 'hovered' : ''} animate-fade-in`}
                   style={{
-                    left: `${x}px`, 
-                    top: `${y}px`,
-                    width: `${width}px`, 
-                    height: `${height}px`,
-                    position: 'absolute'
+                    left: `${x * scale}px`,
+                    top: `${y * scale}px`,
+                    width: `${width * scale}px`,
+                    height: `${height * scale}px`,
+                    position: 'absolute',
                   }}
+                  onMouseEnter={() => setHoveredNode(node.id)}
+                  onMouseLeave={() => setHoveredNode(null)}
                   title={node.text || node.attributes?.['aria-label'] || node.type}
                 >
                   <div className="highlight-tooltip">
-                    {node.text ? node.text.substring(0, 15) : node.type} <span className="confidence high">100%</span>
+                    <span className="tooltip-type">{node.type}</span>
+                    {node.text ? ` — ${node.text.substring(0, 20)}` : ''}
+                    {node.score != null && (
+                      <span className={`confidence ${node.score > 0.85 ? 'high' : 'med'}`}>
+                        {Math.round(node.score * 100)}%
+                      </span>
+                    )}
                   </div>
                 </div>
               );
             })}
 
             <div className="view-toggles glass-panel" style={{position: 'absolute', bottom: 20}}>
-              <button 
+              <button
                 className={`toggle-btn ${showHighlights ? 'active' : ''}`}
                 onClick={() => setShowHighlights(!showHighlights)}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                 Vision
               </button>
-              <button 
+              <button
                 className={`toggle-btn ${showHeatmap ? 'active' : ''}`}
                 onClick={() => setShowHeatmap(!showHeatmap)}
               >
@@ -168,40 +230,79 @@ function App() {
           </div>
         </section>
 
-        {/* Right Sidebar: Predictions & Explanations */}
+        {/* Right Sidebar: Intelligence */}
         <aside className="right-panel">
           <div className="panel-header">
             Intelligence
+            {demoMode && <span className="demo-tag">SIMULATED</span>}
           </div>
-          
+
           <div className="prediction-panel">
             {/* Live Diagnosis */}
             <div className="insight-card animate-fade-in">
               <div className="insight-header">
-                <svg className="insight-icon" style={{color: 'var(--accent-green)'}} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <svg className="insight-icon" style={{color: diagnosis?.state === 'ready' ? 'var(--accent-green)' : 'var(--accent-blue)'}} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
                 <span className="insight-title">State Forensics</span>
               </div>
               <div className="insight-body">
                 {diagnosis ? (
                   <>
-                    State: <strong>{diagnosis.state}</strong><br />
+                    State: <strong style={{color: diagnosis.state === 'ready' ? 'var(--accent-green)' : 'var(--accent-blue)'}}>{diagnosis.state}</strong><br />
                     {diagnosis.summary}
                   </>
-                ) : 'Awaiting diagnostics...'}
+                ) : 'Awaiting diagnostics…'}
               </div>
-              
+
+              {diagnosis && (
+                <div className="diagnosis-metrics">
+                  {diagnosis.interactiveElements != null && (
+                    <div className="mini-metric">
+                      <span className="mini-metric-value">{diagnosis.interactiveElements}</span>
+                      <span className="mini-metric-label">Elements</span>
+                    </div>
+                  )}
+                  {diagnosis.pageLoadMs != null && (
+                    <div className="mini-metric">
+                      <span className="mini-metric-value">{diagnosis.pageLoadMs}ms</span>
+                      <span className="mini-metric-label">Load</span>
+                    </div>
+                  )}
+                  {diagnosis.securityScore != null && (
+                    <div className="mini-metric">
+                      <span className="mini-metric-value">{diagnosis.securityScore}</span>
+                      <span className="mini-metric-label">Security</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="action-grid">
                 <button className="btn-secondary" onClick={() => setModalOpen(true)}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="21" y1="21" x2="15" y2="15"></line><line x1="9" y1="8" x2="15" y2="14"></line><line x1="15" y1="8" x2="9" y2="14"></line></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                   Analyze
                 </button>
               </div>
             </div>
 
-            {/* Explanations Trigger */}
+            {/* Recommendations */}
+            {diagnosis?.recommendations && diagnosis.recommendations.length > 0 && (
+              <div className="insight-card animate-fade-in">
+                <div className="insight-header">
+                  <svg className="insight-icon" style={{color: 'var(--accent-yellow)'}} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+                  <span className="insight-title">Recommendations</span>
+                </div>
+                <ul className="recommendations-list">
+                  {diagnosis.recommendations.map((rec, i) => (
+                    <li key={i}>{rec}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Audit Report */}
             <div style={{marginTop: 'auto', paddingTop: '20px'}}>
-              <button 
-                className="btn-secondary" 
+              <button
+                className="btn-secondary"
                 style={{width: '100%', padding: '12px', background: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.3)', color: 'var(--accent-blue)'}}
                 onClick={() => setModalOpen(true)}
               >
@@ -214,7 +315,7 @@ function App() {
 
       </main>
 
-      {/* One-Click Explanations Modal */}
+      {/* Diagnostics Modal */}
       <div className={`modal-overlay ${modalOpen ? 'open' : ''}`} onClick={() => setModalOpen(false)}>
         <div className="modal-content" onClick={e => e.stopPropagation()}>
           <div className="modal-header">
@@ -226,13 +327,24 @@ function App() {
             <p style={{color: 'var(--text-secondary)', marginBottom: 24, fontSize: 14}}>
               {diagnosis?.summary || 'No recent diagnosis.'}
             </p>
-            
+
+            {diagnosis?.recommendations && (
+              <div style={{marginBottom: 20}}>
+                <h4 style={{fontSize: 14, marginBottom: 8, color: 'var(--text-primary)'}}>Recommendations</h4>
+                <ul style={{paddingLeft: 20, color: 'var(--text-secondary)', fontSize: 13}}>
+                  {diagnosis.recommendations.map((rec, i) => (
+                    <li key={i} style={{marginBottom: 4}}>{rec}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div style={{background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, border: '1px solid var(--border-subtle)', marginBottom: 20, maxHeight: 300, overflowY: 'auto'}}>
               <pre style={{fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--accent-green)', margin: 0, whiteSpace: 'pre-wrap'}}>
                 {JSON.stringify(diagnosis, null, 2)}
               </pre>
             </div>
-            
+
             <button className="btn-primary" onClick={() => setModalOpen(false)}>Acknowledge & Close</button>
           </div>
         </div>
