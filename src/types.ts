@@ -87,6 +87,38 @@ export interface AgentStateDiagnosis {
   };
 }
 
+export interface AgentPageAnalysis {
+  target: {
+    requestedUrl?: string;
+    resolvedUrl: string;
+    finalUrl: string;
+    title: string;
+    reachable: boolean;
+    resolutionTried: string[];
+  };
+  summary: string;
+  score: number;
+  generatedAt: number;
+  signals: {
+    interactiveElements: number;
+    forms: number;
+    headings: number;
+    imagesMissingAlt: number;
+    securityFlags: string[];
+    recentNetworkErrors: number;
+  };
+  diagnosis: AgentStateDiagnosis;
+  actionItems: Array<{
+    severity: 'critical' | 'warning' | 'info';
+    title: string;
+    detail: string;
+    agentInstruction: string;
+  }>;
+  codingAgentBrief: string;
+  semanticTree: SemanticNode;
+  screenshot?: string;
+}
+
 export interface VerifiedActionPlan {
   intent: string;
   confidence: number;

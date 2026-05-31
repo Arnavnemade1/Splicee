@@ -20,258 +20,62 @@ interface TelemetryEvent {
 
 interface SessionStatus {
   url: string;
+  title?: string;
   liveFeed: { feed: TelemetryEvent[] };
 }
 
 interface Diagnosis {
   state: string;
+  confidence?: number;
   summary: string;
+  evidence?: string[];
   recommendations?: string[];
   interactiveElements?: number;
   pageLoadMs?: number;
   securityScore?: string;
-}
-
-// ─── Demo Simulation Data ────────────────────────────────────────────
-
-const DEMO_URLS = [
-  'https://stripe.com/payments',
-  'https://linear.app/inbox',
-  'https://vercel.com/dashboard',
-  'https://github.com/trending',
-];
-
-const DEMO_TELEMETRY_TEMPLATES: Array<{ type: string; detail: string }> = [
-  { type: 'navigation', detail: 'Navigated to target URL' },
-  { type: 'semantic_extract', detail: 'Extracted 47 semantic nodes from DOM' },
-  { type: 'vision_capture', detail: 'Captured clean viewport screenshot' },
-  { type: 'interaction', detail: 'Clicked primary CTA button' },
-  { type: 'scroll', detail: 'Scrolled viewport to content section' },
-  { type: 'form_fill', detail: 'Filled email input field' },
-  { type: 'diagnosis', detail: 'Page state evaluated — ready' },
-  { type: 'security_scan', detail: 'No unsafe iframes detected' },
-  { type: 'element_wait', detail: 'Waited for modal to appear (1.2s)' },
-  { type: 'assertion', detail: 'Verified expected heading text' },
-  { type: 'screenshot', detail: 'Saved annotated screenshot to session' },
-  { type: 'recovery', detail: 'Self-healed stale element reference' },
-];
-
-const DEMO_DIAGNOSES: Diagnosis[] = [
-  {
-    state: 'ready',
-    summary: 'Page fully loaded. All interactive elements are reachable. No blockers detected.',
-    recommendations: ['Proceed with form fill sequence', 'Consider checking newsletter opt-in state'],
-    interactiveElements: 23,
-    pageLoadMs: 847,
-    securityScore: 'A+',
-  },
-  {
-    state: 'interactive',
-    summary: 'Agent is actively interacting with form elements. 3 of 5 fields completed.',
-    recommendations: ['Fill remaining required fields before submit', 'Verify reCAPTCHA widget state'],
-    interactiveElements: 18,
-    pageLoadMs: 1203,
-    securityScore: 'A',
-  },
-  {
-    state: 'navigating',
-    summary: 'Navigation in progress. Waiting for network idle and DOM stability.',
-    recommendations: ['Wait for load event', 'Re-extract semantic tree after navigation'],
-    interactiveElements: 0,
-    pageLoadMs: 2100,
-    securityScore: 'A',
-  },
-  {
-    state: 'evaluating',
-    summary: 'Running visual diff against expected state. Comparing 12 landmark elements.',
-    recommendations: ['Screenshot comparison in progress', 'Flag any layout drift > 5px'],
-    interactiveElements: 31,
-    pageLoadMs: 950,
-    securityScore: 'A+',
-  },
-];
-
-function generateDemoSemanticNodes(): SemanticNode {
-  const makeNode = (
-    id: string, type: string, text: string, rect: { x: number; y: number; width: number; height: number },
-    securityFlags?: string[]
-  ): SemanticNode => ({
-    id, type, text, rect, securityFlags,
-    score: Math.random() * 0.3 + 0.7,
-  });
-
-  return {
-    id: 'root',
-    type: 'document',
-    text: 'Document',
-    children: [
-      makeNode('nav-logo', 'interactive', 'Logo', { x: 24, y: 12, width: 110, height: 32 }),
-      makeNode('nav-products', 'interactive', 'Products', { x: 160, y: 16, width: 72, height: 24 }),
-      makeNode('nav-pricing', 'interactive', 'Pricing', { x: 248, y: 16, width: 60, height: 24 }),
-      makeNode('nav-docs', 'interactive', 'Docs', { x: 324, y: 16, width: 45, height: 24 }),
-      makeNode('nav-signin', 'interactive', 'Sign In', { x: 680, y: 12, width: 80, height: 32 }),
-      makeNode('hero-heading', 'content', 'Build the future', { x: 80, y: 90, width: 420, height: 48 }),
-      makeNode('hero-subtext', 'content', 'Infrastructure for the internet', { x: 80, y: 148, width: 380, height: 24 }),
-      makeNode('cta-primary', 'interactive', 'Start now →', { x: 80, y: 196, width: 140, height: 44 }),
-      makeNode('cta-secondary', 'interactive', 'Contact sales', { x: 236, y: 196, width: 130, height: 44 }),
-      makeNode('feature-card-1', 'content', 'Payments', { x: 40, y: 280, width: 220, height: 140 }),
-      makeNode('feature-card-2', 'content', 'Billing', { x: 280, y: 280, width: 220, height: 140 }),
-      makeNode('feature-card-3', 'content', 'Connect', { x: 520, y: 280, width: 220, height: 140 }),
-      makeNode('cookie-banner', 'interactive', 'Accept Cookies', { x: 20, y: 440, width: 760, height: 48 }, ['tracking_consent']),
-      makeNode('footer-link', 'interactive', 'Privacy Policy', { x: 40, y: 510, width: 100, height: 20 }),
-    ],
+  signals?: {
+    actionableElements?: number;
+    recentNetworkErrors?: number;
+    invalidFields?: number;
+    obstructiveOverlays?: number;
+  };
+  recommendedNextAction?: {
+    tool: string;
+    target?: string;
+    reason: string;
   };
 }
 
-function generateDemoScreenshot(): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = 800;
-  canvas.height = 560;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-
-  // Dark gradient background
-  const bgGrad = ctx.createLinearGradient(0, 0, 800, 560);
-  bgGrad.addColorStop(0, '#0f0f1a');
-  bgGrad.addColorStop(0.5, '#1a1a2e');
-  bgGrad.addColorStop(1, '#16213e');
-  ctx.fillStyle = bgGrad;
-  ctx.fillRect(0, 0, 800, 560);
-
-  // Subtle grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
-  ctx.lineWidth = 1;
-  for (let x = 0; x < 800; x += 40) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 560); ctx.stroke();
-  }
-  for (let y = 0; y < 560; y += 40) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(800, y); ctx.stroke();
-  }
-
-  // Nav bar
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
-  ctx.fillRect(0, 0, 800, 56);
-  ctx.fillStyle = 'rgba(255,255,255,0.04)';
-  ctx.fillRect(0, 56, 800, 1);
-
-  // Logo placeholder
-  const logoGrad = ctx.createLinearGradient(24, 12, 134, 44);
-  logoGrad.addColorStop(0, '#635bff');
-  logoGrad.addColorStop(1, '#a259ff');
-  ctx.fillStyle = logoGrad;
-  ctx.beginPath();
-  ctx.roundRect(24, 12, 110, 32, 6);
-  ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 14px Inter, system-ui';
-  ctx.fillText('stripe', 52, 34);
-
-  // Nav links
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.font = '13px Inter, system-ui';
-  ctx.fillText('Products', 164, 32);
-  ctx.fillText('Pricing', 252, 32);
-  ctx.fillText('Docs', 328, 32);
-
-  // Sign in button
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  ctx.beginPath();
-  ctx.roundRect(680, 12, 80, 32, 6);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.font = '12px Inter, system-ui';
-  ctx.fillText('Sign In', 698, 33);
-
-  // Hero heading
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 36px Inter, system-ui';
-  ctx.fillText('Build the future', 80, 128);
-
-  // Subtext
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.font = '16px Inter, system-ui';
-  ctx.fillText('Infrastructure for the internet economy', 80, 164);
-
-  // CTA buttons
-  const ctaGrad = ctx.createLinearGradient(80, 196, 220, 240);
-  ctaGrad.addColorStop(0, '#635bff');
-  ctaGrad.addColorStop(1, '#7c3aed');
-  ctx.fillStyle = ctaGrad;
-  ctx.beginPath();
-  ctx.roundRect(80, 196, 140, 44, 8);
-  ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.font = '600 14px Inter, system-ui';
-  ctx.fillText('Start now →', 108, 224);
-
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  ctx.beginPath();
-  ctx.roundRect(236, 196, 130, 44, 8);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.font = '600 14px Inter, system-ui';
-  ctx.fillText('Contact sales', 258, 224);
-
-  // Feature cards
-  const cardColors = ['#635bff', '#00d4aa', '#ff6b6b'];
-  const cardLabels = ['Payments', 'Billing', 'Connect'];
-  const cardDescs = ['Accept payments globally', 'Automate revenue ops', 'Multi-party payouts'];
-  for (let i = 0; i < 3; i++) {
-    const cx = 40 + i * 260;
-    ctx.fillStyle = 'rgba(255,255,255,0.04)';
-    ctx.beginPath();
-    ctx.roundRect(cx, 280, 220, 140, 12);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Color accent bar
-    ctx.fillStyle = cardColors[i];
-    ctx.beginPath();
-    ctx.roundRect(cx, 280, 220, 4, [12, 12, 0, 0]);
-    ctx.fill();
-
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 16px Inter, system-ui';
-    ctx.fillText(cardLabels[i], cx + 20, 320);
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.font = '12px Inter, system-ui';
-    ctx.fillText(cardDescs[i], cx + 20, 345);
-
-    // Fake metric
-    ctx.fillStyle = cardColors[i];
-    ctx.font = 'bold 28px Inter, system-ui';
-    ctx.fillText(['$2.4M', '98.7%', '340+'][i], cx + 20, 395);
-  }
-
-  // Cookie banner
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
-  ctx.beginPath();
-  ctx.roundRect(20, 440, 760, 48, 8);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.font = '12px Inter, system-ui';
-  ctx.fillText('🍪  We use cookies for analytics and functionality.', 40, 469);
-  ctx.fillStyle = '#635bff';
-  ctx.beginPath();
-  ctx.roundRect(640, 450, 100, 28, 6);
-  ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.font = '600 11px Inter, system-ui';
-  ctx.fillText('Accept All', 662, 469);
-
-  // Footer
-  ctx.fillStyle = 'rgba(255,255,255,0.3)';
-  ctx.font = '11px Inter, system-ui';
-  ctx.fillText('Privacy Policy', 40, 524);
-  ctx.fillText('Terms of Service', 160, 524);
-  ctx.fillText('© 2026 Stripe, Inc.', 650, 524);
-
-  return canvas.toDataURL('image/png');
+export interface AgentPageAnalysis {
+  target: {
+    requestedUrl?: string;
+    resolvedUrl: string;
+    finalUrl: string;
+    title: string;
+    reachable: boolean;
+    resolutionTried: string[];
+  };
+  summary: string;
+  score: number;
+  generatedAt: number;
+  signals: {
+    interactiveElements: number;
+    forms: number;
+    headings: number;
+    imagesMissingAlt: number;
+    securityFlags: string[];
+    recentNetworkErrors: number;
+  };
+  diagnosis: Diagnosis;
+  actionItems: Array<{
+    severity: 'critical' | 'warning' | 'info';
+    title: string;
+    detail: string;
+    agentInstruction: string;
+  }>;
+  codingAgentBrief: string;
+  semanticTree?: SemanticNode;
+  screenshot?: string;
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────
@@ -292,13 +96,67 @@ function resolveGatewayUrl(options: GatewayOptions): string | null {
   return null;
 }
 
+function normalizeTargetUrl(input: string): string {
+  const value = input.trim();
+  if (!value || /^(local|localhost)$/i.test(value)) return 'http://127.0.0.1:8080';
+  if (/^\d{2,5}$/.test(value)) return `http://127.0.0.1:${value}`;
+  if (/^(localhost|127\.0\.0\.1):\d+/i.test(value)) return `http://${value}`;
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.includes('.') && !value.includes(' ')) return `https://${value}`;
+  return value;
+}
+
+function makeOfflineAnalysis(targetUrl: string): AgentPageAnalysis {
+  return {
+    target: {
+      requestedUrl: targetUrl,
+      resolvedUrl: targetUrl,
+      finalUrl: targetUrl,
+      title: 'Gateway offline preview',
+      reachable: false,
+      resolutionTried: [targetUrl],
+    },
+    summary: 'Preview loaded in the dashboard, but real DOM, network, screenshot, and agent feedback require the local Splice gateway.',
+    score: 0,
+    generatedAt: Date.now(),
+    signals: {
+      interactiveElements: 0,
+      forms: 0,
+      headings: 0,
+      imagesMissingAlt: 0,
+      securityFlags: [],
+      recentNetworkErrors: 0,
+    },
+    diagnosis: {
+      state: 'gateway_offline',
+      confidence: 1,
+      summary: 'Start Splice with SPLICE_ENABLE_OPENCLAW=1 or set VITE_SPLICE_GATEWAY_URL to enable real browser analysis.',
+      evidence: ['Static browser previews cannot inspect cross-origin DOM or report to the coding agent.'],
+      recommendations: ['Run the Splice MCP server with the OpenClaw gateway enabled.', 'Re-run Analyze after the status shows Gateway Connected.'],
+      recommendedNextAction: {
+        tool: 'analyze_page_for_agent',
+        reason: 'The MCP tool performs the same Playwright analysis and persists splice://agent/latest-feedback.',
+      },
+    },
+    actionItems: [{
+      severity: 'critical',
+      title: 'Gateway connection required',
+      detail: 'The page can be previewed, but analysis and coding-agent feedback are disabled until the WebSocket gateway is connected.',
+      agentInstruction: 'Start the local Splice gateway, then call analyze_page_for_agent with this target URL.',
+    }],
+    codingAgentBrief: `# Splice Preview\n\nTarget: ${targetUrl}\n\nStart the local Splice gateway and rerun analyze_page_for_agent to get actionable DOM, network, and diagnostics feedback.`,
+  };
+}
+
 export function useSpliceGateway(options: GatewayOptions = {}) {
   const [connected, setConnected] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
   const [screenshot, setScreenshot] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [semanticTree, setSemanticTree] = useState<SemanticNode | null>(null);
   const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
+  const [analysis, setAnalysis] = useState<AgentPageAnalysis | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const messageResolvers = useRef<Map<string, (value: any) => void>>(new Map());
@@ -333,6 +191,26 @@ export function useSpliceGateway(options: GatewayOptions = {}) {
           try {
             const payload = JSON.parse(event.data);
             if (payload.event === 'handshake') return;
+            if (payload.event === 'agent_feedback') {
+              setAnalysis(payload.data);
+              if (payload.data?.diagnosis) setDiagnosis(payload.data.diagnosis);
+              if (payload.data?.semanticTree) setSemanticTree(payload.data.semanticTree);
+              if (payload.data?.screenshot) setScreenshot(payload.data.screenshot);
+              return;
+            }
+            if (payload.event === 'live_feed_update') {
+              setSessionStatus((current) => ({
+                url: current?.url || '',
+                title: current?.title,
+                liveFeed: {
+                  feed: [
+                    { type: payload.data?.type || 'event', detail: payload.data?.detail || 'Gateway event', timestamp: payload.timestamp || Date.now() },
+                    ...(current?.liveFeed?.feed || []),
+                  ].slice(0, 20),
+                },
+              }));
+              return;
+            }
 
             if (payload.id && messageResolvers.current.has(payload.id)) {
               const resolver = messageResolvers.current.get(payload.id);
@@ -392,9 +270,62 @@ export function useSpliceGateway(options: GatewayOptions = {}) {
     });
   }, []);
 
-  const navigate = useCallback((url: string) => {
-    return sendCommand('navigate', { url });
-  }, [sendCommand]);
+  const navigate = useCallback(async (url: string) => {
+    const targetUrl = normalizeTargetUrl(url);
+    if (!connected || demoMode) {
+      setPreviewUrl(targetUrl);
+      setScreenshot(null);
+      setSemanticTree(null);
+      setAnalysis(makeOfflineAnalysis(targetUrl));
+      setDiagnosis(makeOfflineAnalysis(targetUrl).diagnosis);
+      setSessionStatus({
+        url: targetUrl,
+        title: 'Preview mode',
+        liveFeed: {
+          feed: [{ type: 'preview_navigation', detail: `Previewing ${targetUrl}`, timestamp: Date.now() }],
+        },
+      });
+      return { success: true, url: targetUrl, previewOnly: true };
+    }
+
+    setPreviewUrl(null);
+    return sendCommand('navigate', { url: targetUrl });
+  }, [connected, demoMode, sendCommand]);
+
+  const analyzePage = useCallback(async (targetUrl?: string, intent?: string) => {
+    const normalizedUrl = targetUrl ? normalizeTargetUrl(targetUrl) : undefined;
+    if (!connected || demoMode) {
+      const previewTarget = normalizedUrl || previewUrl || 'http://127.0.0.1:8080';
+      setPreviewUrl(previewTarget);
+      setScreenshot(null);
+      const offlineAnalysis = makeOfflineAnalysis(previewTarget);
+      setAnalysis(offlineAnalysis);
+      setDiagnosis(offlineAnalysis.diagnosis);
+      setSessionStatus({
+        url: previewTarget,
+        title: 'Preview mode',
+        liveFeed: {
+          feed: [{ type: 'offline_analysis', detail: `Gateway required for ${previewTarget}`, timestamp: Date.now() }],
+        },
+      });
+      return offlineAnalysis;
+    }
+
+    setPreviewUrl(null);
+    const result = await sendCommand('analyze_page', { targetUrl: normalizedUrl, intent });
+    if (result) {
+      setAnalysis(result);
+      if (result.screenshot) setScreenshot(result.screenshot);
+      if (result.semanticTree) setSemanticTree(result.semanticTree);
+      if (result.diagnosis) setDiagnosis(result.diagnosis);
+      setSessionStatus((current) => ({
+        url: result.target?.finalUrl || normalizedUrl || current?.url || '',
+        title: result.target?.title,
+        liveFeed: current?.liveFeed || { feed: [] },
+      }));
+    }
+    return result;
+  }, [connected, demoMode, previewUrl, sendCommand]);
 
   const interact = useCallback((elementId: string, action: string, value?: string) => {
     return sendCommand('interact', { elementId, action, value });
@@ -430,79 +361,40 @@ export function useSpliceGateway(options: GatewayOptions = {}) {
     return () => { isActive = false; };
   }, [connected, demoMode, sendCommand]);
 
-  // ── Demo simulation (when no backend is available) ──
+  // ── Offline state (honest preview mode; real analysis requires gateway) ──
   useEffect(() => {
-    if (!demoMode) return;
+    if (!demoMode || previewUrl) return;
 
-    let isActive = true;
-    let tick = 0;
-    const feedBuffer: TelemetryEvent[] = [];
-
-    // Generate the initial screenshot once
-    const demoScreenshot = generateDemoScreenshot();
-    setScreenshot(demoScreenshot);
-    setSemanticTree(generateDemoSemanticNodes());
-
-    const simulate = () => {
-      if (!isActive) return;
-
-      // Rotate URL
-      const urlIdx = Math.floor(tick / 4) % DEMO_URLS.length;
-      // Cycle through diagnoses
-      const diagIdx = tick % DEMO_DIAGNOSES.length;
-      // Add a new telemetry event
-      const tmplIdx = tick % DEMO_TELEMETRY_TEMPLATES.length;
-      const tmpl = DEMO_TELEMETRY_TEMPLATES[tmplIdx];
-
-      feedBuffer.unshift({
-        type: tmpl.type,
-        detail: tmpl.detail,
-        timestamp: Date.now(),
-      });
-
-      // Keep feed at max 20 events
-      if (feedBuffer.length > 20) feedBuffer.pop();
-
-      setSessionStatus({
-        url: DEMO_URLS[urlIdx],
-        liveFeed: { feed: [...feedBuffer] },
-      });
-
-      setDiagnosis(DEMO_DIAGNOSES[diagIdx]);
-
-      // Slightly shuffle semantic nodes to simulate live re-extraction
-      const tree = generateDemoSemanticNodes();
-      if (tree.children) {
-        tree.children.forEach((child) => {
-          if (child.rect) {
-            child.rect.x += Math.round((Math.random() - 0.5) * 4);
-            child.rect.y += Math.round((Math.random() - 0.5) * 2);
-          }
-        });
-      }
-      setSemanticTree(tree);
-
-      tick++;
-      if (isActive) setTimeout(simulate, 2500);
-    };
-
-    // Start simulation after a short delay for smooth transition
-    const timer = setTimeout(simulate, 500);
-
-    return () => {
-      isActive = false;
-      clearTimeout(timer);
-    };
-  }, [demoMode]);
+    setScreenshot(null);
+    setSemanticTree(null);
+    setAnalysis(null);
+    setDiagnosis({
+      state: 'gateway_offline',
+      confidence: 1,
+      summary: 'Enter localhost, a port like 8080, or a full URL to preview it. Start the Splice gateway for real Playwright analysis and coding-agent feedback.',
+      evidence: ['No synthetic DOM or screenshot is shown in offline mode.'],
+      recommendations: ['Enable SPLICE_ENABLE_OPENCLAW=1 for live analysis.', 'Use analyze_page_for_agent from MCP for direct coding-agent feedback.'],
+    });
+    setSessionStatus({
+      url: '',
+      title: 'Gateway offline',
+      liveFeed: {
+        feed: [{ type: 'gateway_offline', detail: 'Waiting for target URL or local gateway', timestamp: Date.now() }],
+      },
+    });
+  }, [demoMode, previewUrl]);
 
   return {
     connected,
     demoMode,
     sessionStatus,
     screenshot,
+    previewUrl,
     semanticTree,
     diagnosis,
+    analysis,
     navigate,
+    analyzePage,
     interact,
   };
 }

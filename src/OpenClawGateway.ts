@@ -135,6 +135,12 @@ export class OpenClawGateway {
           break;
         }
 
+        case 'analyze_page': {
+          const { targetUrl, intent } = args || {};
+          result = await this.browser.analyzePage(targetUrl, intent);
+          break;
+        }
+
         case 'interact': {
           const { elementId, action, value, agentId } = args || {};
           if (!elementId || !action) throw new Error('Missing "elementId" or "action" parameters for interact');

@@ -53,6 +53,12 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
         name: "Live Heartbeat Feed",
         mimeType: "application/json",
         description: "A real-time rolling window of the last 5 agent actions and 5 console logs — the agent's heartbeat.",
+      },
+      {
+        uri: "splice://agent/latest-feedback",
+        name: "Latest Coding Agent Feedback",
+        mimeType: "application/json",
+        description: "The latest real browser analysis report prepared for coding agents by Nexus Core.",
       }
     ],
   };
@@ -121,6 +127,16 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     };
   }
 
+  if (request.params.uri === "splice://agent/latest-feedback") {
+    return {
+      contents: [{
+        uri: request.params.uri,
+        mimeType: "application/json",
+        text: JSON.stringify(browser.getLatestAgentFeedback() ?? { status: "no_feedback_generated" }, null, 2)
+      }],
+    };
+  }
+
   throw new Error(`Resource not found: ${request.params.uri}`);
 });
 
@@ -137,6 +153,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             url: { type: "string", description: "The full URL to navigate to" },
           },
           required: ["url"],
+        },
+      },
+      {
+        name: "analyze_page_for_agent",
+        description: "Resolve a localhost/common-port target or external URL, navigate with Playwright, analyze DOM/diagnostics/network signals, persist splice://agent/latest-feedback, and return direct coding-agent instructions.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            targetUrl: { type: "string", description: "Optional URL, hostname, localhost port, or blank/local to auto-discover common local dev ports starting with 8080." },
+            intent: { type: "string", description: "Optional product or coding goal to bias analysis and recommendations." }
+          }
         },
       },
       {
@@ -550,6 +577,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { url } = request.params.arguments as { url: string };
       await browser.navigate(url);
       return { content: [{ type: "text", text: `Navigated to ${url}.` }] };
+    }
+
+    if (request.params.name === "analyze_page_for_agent") {
+      const { targetUrl, intent } = (request.params.arguments as any) || {};
+      const analysis = await browser.analyzePage(targetUrl, intent);
+      return {
+        content: [{
+          type: "text",
+          text: `${analysis.codingAgentBrief}\n\n=== FULL JSON REPORT ===\n${JSON.stringify(analysis, null, 2)}`
+        }]
+      };
     }
 
     if (request.params.name === "get_semantic_tree_optimized") {

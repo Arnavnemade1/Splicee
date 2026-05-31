@@ -15,7 +15,7 @@ import { OpenClawGateway } from './OpenClawGateway.js';
 import { CommandCenterServer } from './CommandCenterServer.js';
 import { discordNotifier } from './DiscordWebhook.js';
 import type { AuditOptions } from './SecurityAuditor.js';
-import type { AgentStateDiagnosis, LedgerEntry, SemanticNode, SessionMetrics, VerifiedActionPlan, SummonRequest } from './types.js';
+import type { AgentPageAnalysis, AgentStateDiagnosis, LedgerEntry, SemanticNode, SessionMetrics, VerifiedActionPlan, SummonRequest } from './types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -42,6 +42,7 @@ export class BrowserManager {
   // OpenClaw Gateway instance
   private openclawGateway: OpenClawGateway | null = null;
   private commandCenterServer: CommandCenterServer | null = null;
+  private latestAgentFeedback: AgentPageAnalysis | null = null;
 
   public metrics: SessionMetrics = {
     tokensSavedEstimate: 0,
@@ -314,6 +315,304 @@ export class BrowserManager {
     this.coordinator.updateBranchStatus(this.activeBranch, url);
     
     this.saveMicroSnapshot('navigate', { url });
+  }
+
+  private localCandidateUrls(input?: string): string[] {
+    const raw = (input || '').trim();
+    const configuredPorts = (process.env.SPLICE_LOCAL_APP_PORTS || '')
+      .split(',')
+      .map(port => Number(port.trim()))
+      .filter(port => Number.isInteger(port) && port > 0);
+    const ports = configuredPorts.length > 0
+      ? configuredPorts
+      : [8080, 5173, 5174, 3000, 3001, 4173, 4000, 5000, 8000, 8787, 8888];
+
+    if (!raw || /^(local|localhost|127\.0\.0\.1)$/i.test(raw)) {
+      return ports.flatMap(port => [`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
+    }
+
+    if (/^\d{2,5}$/.test(raw)) {
+      return [`http://127.0.0.1:${raw}`, `http://localhost:${raw}`];
+    }
+
+    if (/^(localhost|127\.0\.0\.1):\d+/i.test(raw)) {
+      return [`http://${raw}`];
+    }
+
+    if (/^https?:\/\//i.test(raw)) return [raw];
+
+    if (raw.includes('.') && !raw.includes(' ')) {
+      return [`https://${raw}`, `http://${raw}`];
+    }
+
+    return [raw];
+  }
+
+  private async probeHttpUrl(url: string): Promise<boolean> {
+    if (!/^https?:\/\//i.test(url)) return false;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: AbortSignal.timeout(900),
+      });
+      return response.status < 500;
+    } catch {
+      return false;
+    }
+  }
+
+  private async resolveAnalysisTarget(input?: string): Promise<{ resolvedUrl: string; tried: string[]; reachable: boolean }> {
+    const candidates = this.localCandidateUrls(input);
+    const tried: string[] = [];
+
+    for (const candidate of candidates) {
+      tried.push(candidate);
+      if (await this.probeHttpUrl(candidate)) {
+        return { resolvedUrl: candidate, tried, reachable: true };
+      }
+    }
+
+    return {
+      resolvedUrl: candidates[0] || 'http://127.0.0.1:8080',
+      tried,
+      reachable: false,
+    };
+  }
+
+  private flattenSemanticNodes(root: SemanticNode): SemanticNode[] {
+    const nodes: SemanticNode[] = [];
+    const walk = (node: SemanticNode) => {
+      nodes.push(node);
+      node.children?.forEach(walk);
+    };
+    walk(root);
+    return nodes;
+  }
+
+  private buildCodingAgentBrief(analysis: AgentPageAnalysis): string {
+    const actions = analysis.actionItems.length > 0
+      ? analysis.actionItems.map((item, index) => `${index + 1}. [${item.severity.toUpperCase()}] ${item.agentInstruction}`).join('\n')
+      : '1. No blocking issues detected. Continue with the requested implementation and re-run analysis after changes.';
+
+    return [
+      `# Splice Page Analysis`,
+      ``,
+      `Target: ${analysis.target.finalUrl}`,
+      `Score: ${analysis.score}/100`,
+      `State: ${analysis.diagnosis.state} (${Math.round(analysis.diagnosis.confidence * 100)}% confidence)`,
+      ``,
+      `## Summary`,
+      analysis.summary,
+      ``,
+      `## Coding Agent Actions`,
+      actions,
+      ``,
+      `## Evidence`,
+      `- ${analysis.signals.interactiveElements} interactive element(s)`,
+      `- ${analysis.signals.forms} form(s)`,
+      `- ${analysis.signals.imagesMissingAlt} image(s) missing alt text`,
+      `- ${analysis.signals.recentNetworkErrors} recent network error(s)`,
+      analysis.signals.securityFlags.length > 0 ? `- Security flags: ${analysis.signals.securityFlags.join(', ')}` : `- No semantic security flags detected`,
+      ``,
+      `## Recommended Splice Tools`,
+      `- diagnose_agent_state`,
+      `- get_semantic_tree_optimized`,
+      `- compile_verified_action`,
+    ].join('\n');
+  }
+
+  private persistAgentFeedback(analysis: AgentPageAnalysis) {
+    const feedbackPath = path.join(this.snapshotsDir, 'agent-feedback-latest.json');
+    fs.writeFileSync(feedbackPath, JSON.stringify(analysis, null, 2));
+    this.latestAgentFeedback = analysis;
+    this.openclawGateway?.broadcast('agent_feedback', analysis);
+    this.pushLiveFeed('agent_feedback', `Analysis ready for coding agent: ${analysis.score}/100`);
+  }
+
+  getLatestAgentFeedback(): AgentPageAnalysis | null {
+    return this.latestAgentFeedback;
+  }
+
+  async analyzePage(targetUrl?: string, intent: string = 'Review this page and tell the coding agent what to improve'): Promise<AgentPageAnalysis> {
+    const requestedUrl = targetUrl?.trim() || undefined;
+    const page = this.getActivePage();
+    const currentUrl = page.url();
+
+    let resolvedUrl = currentUrl;
+    let resolutionTried: string[] = [];
+    let reachable = currentUrl !== 'about:blank';
+
+    if (requestedUrl || currentUrl === 'about:blank') {
+      const resolution = await this.resolveAnalysisTarget(requestedUrl);
+      resolvedUrl = resolution.resolvedUrl;
+      resolutionTried = resolution.tried;
+      reachable = resolution.reachable;
+      try {
+        await this.navigate(resolvedUrl);
+      } catch (error: any) {
+        reachable = false;
+        await page.setContent(`<!doctype html>
+          <main>
+            <h1>Splice could not reach the target</h1>
+            <p>${resolvedUrl}</p>
+            <p>${String(error?.message || 'Navigation failed')}</p>
+          </main>`);
+        this.pushLiveFeed('navigation_failed', `${resolvedUrl}: ${String(error?.message || 'Navigation failed').slice(0, 120)}`);
+      }
+    } else {
+      resolutionTried = [currentUrl];
+    }
+
+    await this.waitForStability(3500);
+
+    const semanticTree = await this.getSemanticTree(intent, 'UX', 2400);
+    const diagnosis = await this.diagnoseAgentState(intent);
+    const telemetry = this.telemetry.get(this.activeBranch)?.getLogs() || [];
+    const recentNetworkErrors = telemetry
+      .filter(log => log.type === 'network' && log.data.event === 'response' && Number(log.data.status) >= 400)
+      .slice(-10);
+
+    const pageSignals = await page.evaluate(() => {
+      const isVisible = (el: Element) => {
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          Number(style.opacity || 1) > 0.05 &&
+          rect.width > 0 &&
+          rect.height > 0;
+      };
+
+      return {
+        headings: Array.from(document.querySelectorAll('h1,h2,h3')).filter(isVisible).length,
+        forms: Array.from(document.querySelectorAll('form')).filter(isVisible).length,
+        imagesMissingAlt: Array.from(document.querySelectorAll<HTMLImageElement>('img')).filter(img => isVisible(img) && !img.alt.trim()).length,
+        bodyTextLength: (document.body?.innerText || '').replace(/\s+/g, ' ').trim().length,
+        hasMainLandmark: !!document.querySelector('main,[role="main"]'),
+        h1Count: Array.from(document.querySelectorAll('h1')).filter(isVisible).length,
+      };
+    }).catch(() => ({
+      headings: 0,
+      forms: 0,
+      imagesMissingAlt: 0,
+      bodyTextLength: 0,
+      hasMainLandmark: false,
+      h1Count: 0,
+    }));
+
+    const nodes = this.flattenSemanticNodes(semanticTree);
+    const securityFlags = Array.from(new Set(nodes.flatMap(node => node.securityFlags || [])));
+    const interactiveElements = nodes.filter(node => node.type === 'interactive').length || diagnosis.signals.actionableElements;
+
+    const actionItems: AgentPageAnalysis['actionItems'] = [];
+    if (!reachable) {
+      actionItems.push({
+        severity: 'critical',
+        title: 'Target was not reachable during local discovery',
+        detail: `Splice tried ${resolutionTried.join(', ')} and used ${resolvedUrl} as the best candidate.`,
+        agentInstruction: `Start the dev server or provide the exact URL, then rerun analyze_page_for_agent against ${resolvedUrl}.`,
+      });
+    }
+    if (diagnosis.state !== 'ready') {
+      actionItems.push({
+        severity: diagnosis.state === 'captcha' || diagnosis.state === 'auth_required' ? 'critical' : 'warning',
+        title: `Browser state is ${diagnosis.state}`,
+        detail: diagnosis.summary,
+        agentInstruction: `Use diagnose_agent_state evidence to clear "${diagnosis.state}" before continuing feature work.`,
+      });
+    }
+    if (recentNetworkErrors.length > 0) {
+      actionItems.push({
+        severity: 'warning',
+        title: 'Network errors detected',
+        detail: `${recentNetworkErrors.length} recent HTTP error response(s), latest status ${recentNetworkErrors.at(-1)?.data.status}.`,
+        agentInstruction: 'Inspect failing routes/assets and fix missing resources or server errors before polishing UI.',
+      });
+    }
+    if (pageSignals.h1Count !== 1) {
+      actionItems.push({
+        severity: 'info',
+        title: 'Heading structure needs review',
+        detail: `Detected ${pageSignals.h1Count} visible H1 element(s).`,
+        agentInstruction: 'Ensure the page has one clear H1 and a logical heading hierarchy.',
+      });
+    }
+    if (!pageSignals.hasMainLandmark) {
+      actionItems.push({
+        severity: 'info',
+        title: 'Main landmark missing',
+        detail: 'No <main> or role="main" landmark was detected.',
+        agentInstruction: 'Wrap primary content in a semantic main landmark for accessibility and agent navigation.',
+      });
+    }
+    if (pageSignals.imagesMissingAlt > 0) {
+      actionItems.push({
+        severity: 'info',
+        title: 'Images missing alt text',
+        detail: `${pageSignals.imagesMissingAlt} visible image(s) have empty alt text.`,
+        agentInstruction: 'Add meaningful alt text for content images or mark decorative images intentionally.',
+      });
+    }
+    if (securityFlags.length > 0) {
+      actionItems.push({
+        severity: 'warning',
+        title: 'Semantic security flags detected',
+        detail: securityFlags.join(', '),
+        agentInstruction: 'Review flagged DOM nodes with the Security lens before executing sensitive actions.',
+      });
+    }
+
+    const penalty = (reachable ? 0 : 25) +
+      (diagnosis.state === 'ready' ? 0 : 18) +
+      Math.min(20, recentNetworkErrors.length * 4) +
+      Math.min(10, pageSignals.imagesMissingAlt * 2) +
+      (pageSignals.h1Count === 1 ? 0 : 4) +
+      (pageSignals.hasMainLandmark ? 0 : 4) +
+      Math.min(12, securityFlags.length * 4);
+    const score = Math.max(0, Math.min(100, 100 - penalty));
+
+    const title = await page.title().catch(() => '');
+    const finalUrl = page.url();
+    const summary = reachable
+      ? `${title || finalUrl} is loaded and classified as ${diagnosis.state}. Splice found ${interactiveElements} interactive element(s), ${pageSignals.forms} form(s), and ${recentNetworkErrors.length} recent network issue(s).`
+      : `Splice could not confirm a live target, but prepared diagnostics for ${resolvedUrl}. Start the app or provide an exact URL to run the full browser analysis.`;
+
+    const screenshot = await this.captureCleanScreenshot()
+      .then(base64 => `data:image/png;base64,${base64}`)
+      .catch(() => undefined);
+
+    const analysis: AgentPageAnalysis = {
+      target: {
+        requestedUrl,
+        resolvedUrl,
+        finalUrl,
+        title,
+        reachable,
+        resolutionTried,
+      },
+      summary,
+      score,
+      generatedAt: Date.now(),
+      signals: {
+        interactiveElements,
+        forms: pageSignals.forms,
+        headings: pageSignals.headings,
+        imagesMissingAlt: pageSignals.imagesMissingAlt,
+        securityFlags,
+        recentNetworkErrors: recentNetworkErrors.length,
+      },
+      diagnosis,
+      actionItems,
+      codingAgentBrief: '',
+      semanticTree,
+      screenshot,
+    };
+
+    analysis.codingAgentBrief = this.buildCodingAgentBrief(analysis);
+    this.persistAgentFeedback(analysis);
+    return analysis;
   }
 
   async speculativeFork(urls: string[]) {

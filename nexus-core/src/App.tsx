@@ -32,9 +32,11 @@ function App() {
     demoMode,
     sessionStatus,
     screenshot,
+    previewUrl,
     semanticTree,
     diagnosis,
-    navigate
+    analysis,
+    analyzePage
   } = useSpliceGateway();
 
   // Calculate scale factor when screenshot / viewport size changes
@@ -48,25 +50,33 @@ function App() {
     };
     const observer = new ResizeObserver(updateScale);
     observer.observe(viewportRef.current);
-    imgRef.current.addEventListener('load', updateScale);
-    return () => observer.disconnect();
+    const image = imgRef.current;
+    image.addEventListener('load', updateScale);
+    return () => {
+      observer.disconnect();
+      image.removeEventListener('load', updateScale);
+    };
   }, [screenshot]);
 
-  const handleNavigate = (e: FormEvent) => {
-    e.preventDefault();
+  const handleNavigate = (event: FormEvent) => {
+    event.preventDefault();
     if (urlInput) {
-      navigate(urlInput);
+      analyzePage(urlInput, 'Analyze this application and produce concrete coding-agent feedback');
     }
   };
 
   const semanticNodes = semanticTree ? flattenTree(semanticTree) : [];
   const feed = sessionStatus?.liveFeed?.feed || [];
+  const actionItems = analysis?.actionItems || [];
+  const score = analysis?.score;
 
   const isOnline = connected && !demoMode;
   const statusLabel = isOnline
     ? 'System Online • Gateway Connected'
     : demoMode
-    ? 'Demo Mode • Simulated Telemetry'
+    ? previewUrl
+      ? 'Preview Mode • Gateway Offline'
+      : 'Gateway Offline • Enter Target'
     : 'Connecting to Gateway…';
   const statusColor = isOnline ? 'var(--accent-green)' : demoMode ? 'var(--accent-purple)' : 'var(--accent-yellow)';
   const statusBg = isOnline ? 'var(--accent-green-bg)' : demoMode ? 'rgba(139,92,246,0.1)' : 'var(--accent-yellow-bg)';
@@ -107,7 +117,7 @@ function App() {
         <aside className="sidebar">
           <div className="panel-header">
             Live Telemetry
-            {demoMode && <span className="demo-tag">SIMULATED</span>}
+            {demoMode && <span className="demo-tag">OFFLINE</span>}
           </div>
           <div className="timeline-list">
             <div className="timeline-track">
@@ -145,14 +155,20 @@ function App() {
                 className="url-bar"
                 style={{ width: '100%', outline: 'none' }}
                 value={urlInput}
-                onChange={e => setUrlInput(e.target.value)}
-                placeholder={sessionStatus?.url || "Enter URL and press Enter..."}
+                onChange={event => setUrlInput(event.target.value)}
+                placeholder={sessionStatus?.url || "localhost, 8080, or https://your-app.com"}
               />
             </form>
+            <button
+              className="analyze-button"
+              onClick={() => analyzePage(urlInput || sessionStatus?.url, 'Analyze this application and produce concrete coding-agent feedback')}
+            >
+              Analyze
+            </button>
             {demoMode && (
               <div className="demo-indicator">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                DEMO
+                PREVIEW
               </div>
             )}
           </div>
@@ -164,6 +180,13 @@ function App() {
                 src={screenshot}
                 alt="Live viewport capture"
                 className="viewport-screenshot"
+              />
+            ) : previewUrl ? (
+              <iframe
+                className="viewport-frame"
+                src={previewUrl}
+                title="Offline webpage preview"
+                sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
               />
             ) : (
               <div className="empty-viewport">
@@ -234,10 +257,20 @@ function App() {
         <aside className="right-panel">
           <div className="panel-header">
             Intelligence
-            {demoMode && <span className="demo-tag">SIMULATED</span>}
+            {demoMode && <span className="demo-tag">OFFLINE</span>}
           </div>
 
           <div className="prediction-panel">
+            {analysis && (
+              <div className="score-card animate-fade-in">
+                <div>
+                  <span className="score-label">Analysis Score</span>
+                  <strong>{score}</strong>
+                </div>
+                <p>{analysis.summary}</p>
+              </div>
+            )}
+
             {/* Live Diagnosis */}
             <div className="insight-card animate-fade-in">
               <div className="insight-header">
@@ -247,7 +280,8 @@ function App() {
               <div className="insight-body">
                 {diagnosis ? (
                   <>
-                    State: <strong style={{color: diagnosis.state === 'ready' ? 'var(--accent-green)' : 'var(--accent-blue)'}}>{diagnosis.state}</strong><br />
+                    State: <strong style={{color: diagnosis.state === 'ready' ? 'var(--accent-green)' : 'var(--accent-blue)'}}>{diagnosis.state}</strong>
+                    {diagnosis.confidence != null && <> • {Math.round(diagnosis.confidence * 100)}%</>}<br />
                     {diagnosis.summary}
                   </>
                 ) : 'Awaiting diagnostics…'}
@@ -259,6 +293,24 @@ function App() {
                     <div className="mini-metric">
                       <span className="mini-metric-value">{diagnosis.interactiveElements}</span>
                       <span className="mini-metric-label">Elements</span>
+                    </div>
+                  )}
+                  {analysis?.signals.interactiveElements != null && (
+                    <div className="mini-metric">
+                      <span className="mini-metric-value">{analysis.signals.interactiveElements}</span>
+                      <span className="mini-metric-label">Actions</span>
+                    </div>
+                  )}
+                  {analysis?.signals.forms != null && (
+                    <div className="mini-metric">
+                      <span className="mini-metric-value">{analysis.signals.forms}</span>
+                      <span className="mini-metric-label">Forms</span>
+                    </div>
+                  )}
+                  {analysis?.signals.recentNetworkErrors != null && (
+                    <div className="mini-metric">
+                      <span className="mini-metric-value">{analysis.signals.recentNetworkErrors}</span>
+                      <span className="mini-metric-label">HTTP Errors</span>
                     </div>
                   )}
                   {diagnosis.pageLoadMs != null && (
@@ -284,18 +336,31 @@ function App() {
               </div>
             </div>
 
-            {/* Recommendations */}
-            {diagnosis?.recommendations && diagnosis.recommendations.length > 0 && (
+            {/* Agent Actions */}
+            {actionItems.length > 0 && (
               <div className="insight-card animate-fade-in">
                 <div className="insight-header">
                   <svg className="insight-icon" style={{color: 'var(--accent-yellow)'}} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-                  <span className="insight-title">Recommendations</span>
+                  <span className="insight-title">Coding Agent Actions</span>
                 </div>
-                <ul className="recommendations-list">
-                  {diagnosis.recommendations.map((rec, i) => (
-                    <li key={i}>{rec}</li>
+                <ul className="action-items-list">
+                  {actionItems.map((item, index) => (
+                    <li key={`${item.title}-${index}`} className={`severity-${item.severity}`}>
+                      <strong>{item.title}</strong>
+                      <span>{item.agentInstruction}</span>
+                    </li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {analysis?.codingAgentBrief && (
+              <div className="insight-card animate-fade-in">
+                <div className="insight-header">
+                  <svg className="insight-icon" style={{color: 'var(--accent-green)'}} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path></svg>
+                  <span className="insight-title">Agent Brief</span>
+                </div>
+                <pre className="agent-brief">{analysis.codingAgentBrief}</pre>
               </div>
             )}
 
@@ -307,7 +372,7 @@ function App() {
                 onClick={() => setModalOpen(true)}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                Generate Audit Report
+                View Full Report
               </button>
             </div>
           </div>
@@ -317,7 +382,7 @@ function App() {
 
       {/* Diagnostics Modal */}
       <div className={`modal-overlay ${modalOpen ? 'open' : ''}`} onClick={() => setModalOpen(false)}>
-        <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-content" onClick={event => event.stopPropagation()}>
           <div className="modal-header">
             <div className="modal-title">Live Diagnostics</div>
             <button className="modal-close" onClick={() => setModalOpen(false)}>&times;</button>
@@ -339,9 +404,16 @@ function App() {
               </div>
             )}
 
+            {analysis?.codingAgentBrief && (
+              <div style={{marginBottom: 20}}>
+                <h4 style={{fontSize: 14, marginBottom: 8, color: 'var(--text-primary)'}}>Coding Agent Brief</h4>
+                <pre className="modal-report">{analysis.codingAgentBrief}</pre>
+              </div>
+            )}
+
             <div style={{background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, border: '1px solid var(--border-subtle)', marginBottom: 20, maxHeight: 300, overflowY: 'auto'}}>
               <pre style={{fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--accent-green)', margin: 0, whiteSpace: 'pre-wrap'}}>
-                {JSON.stringify(diagnosis, null, 2)}
+                {JSON.stringify(analysis || diagnosis, null, 2)}
               </pre>
             </div>
 
