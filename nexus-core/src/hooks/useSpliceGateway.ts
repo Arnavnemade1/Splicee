@@ -78,6 +78,145 @@ export interface AgentPageAnalysis {
   screenshot?: string;
 }
 
+interface DemoPage {
+  slug: string;
+  title: string;
+  score: number;
+  state: string;
+  summary: string;
+  html: string;
+  nodes: SemanticNode[];
+  actionItems: AgentPageAnalysis['actionItems'];
+  signals: AgentPageAnalysis['signals'];
+}
+
+const DEMO_PAGES: DemoPage[] = [
+  {
+    slug: 'landing',
+    title: 'Acme Cloud — Landing',
+    score: 91,
+    state: 'ready',
+    summary: 'Landing page is visually stable with clear navigation, one primary CTA, and no blocking UI. The agent should verify CTA hierarchy and image alt coverage.',
+    html: demoDocument('Acme Cloud', 'Build safer browser agents', 'Launch Console', 'Docs', 'Trusted by security teams shipping agentic workflows.', 'Explore integrations'),
+    nodes: [
+      demoNode('demo-nav-docs', 'interactive', 'Docs', { x: 620, y: 34, width: 78, height: 34 }),
+      demoNode('demo-primary-cta', 'interactive', 'Launch Console', { x: 92, y: 252, width: 180, height: 48 }),
+      demoNode('demo-secondary-cta', 'interactive', 'Explore integrations', { x: 288, y: 252, width: 190, height: 48 }),
+      demoNode('demo-headline', 'content', 'Build safer browser agents', { x: 88, y: 138, width: 500, height: 60 }),
+    ],
+    actionItems: [{
+      severity: 'info',
+      title: 'CTA hierarchy is strong',
+      detail: 'Primary and secondary CTAs are visually distinct.',
+      agentInstruction: 'Keep the primary CTA above the fold and verify it maps to the intended onboarding route.',
+    }],
+    signals: { interactiveElements: 3, forms: 0, headings: 3, imagesMissingAlt: 0, securityFlags: [], recentNetworkErrors: 0 },
+  },
+  {
+    slug: 'pricing',
+    title: 'Acme Cloud — Pricing',
+    score: 84,
+    state: 'ready',
+    summary: 'Pricing page has good structure, but plan comparison needs clearer affordances for the recommended plan.',
+    html: demoDocument('Pricing', 'Plans that scale with your agents', 'Start Pro Trial', 'Contact Sales', 'Three plans, transparent limits, and usage-based overages.', 'Compare features'),
+    nodes: [
+      demoNode('demo-plan-pro', 'interactive', 'Start Pro Trial', { x: 92, y: 252, width: 168, height: 48 }),
+      demoNode('demo-sales', 'interactive', 'Contact Sales', { x: 278, y: 252, width: 158, height: 48 }),
+      demoNode('demo-pricing-copy', 'content', 'Plans that scale with your agents', { x: 88, y: 138, width: 560, height: 60 }),
+    ],
+    actionItems: [{
+      severity: 'warning',
+      title: 'Recommended plan affordance is subtle',
+      detail: 'The Pro plan CTA is visible but not strongly differentiated.',
+      agentInstruction: 'Add a “Recommended” badge and stronger contrast to the Pro plan card.',
+    }],
+    signals: { interactiveElements: 4, forms: 0, headings: 4, imagesMissingAlt: 0, securityFlags: [], recentNetworkErrors: 0 },
+  },
+  {
+    slug: 'checkout',
+    title: 'Acme Cloud — Checkout',
+    score: 76,
+    state: 'validation_blocked',
+    summary: 'Checkout flow is reachable, but the agent detected validation risk around required billing fields and disabled submit state.',
+    html: demoDocument('Checkout', 'Complete workspace setup', 'Create Workspace', 'Back to Pricing', 'Billing email and workspace name are required before submit activates.', 'Review security policy'),
+    nodes: [
+      demoNode('demo-email', 'interactive', 'Billing email', { x: 96, y: 236, width: 260, height: 44 }),
+      demoNode('demo-workspace', 'interactive', 'Workspace name', { x: 96, y: 296, width: 260, height: 44 }),
+      demoNode('demo-submit', 'interactive', 'Create Workspace', { x: 96, y: 360, width: 180, height: 48 }),
+    ],
+    actionItems: [{
+      severity: 'warning',
+      title: 'Submit flow needs clearer validation',
+      detail: 'Required fields gate the submit button.',
+      agentInstruction: 'Show inline validation hints before submit and explain why the CTA is disabled.',
+    }],
+    signals: { interactiveElements: 5, forms: 1, headings: 3, imagesMissingAlt: 0, securityFlags: [], recentNetworkErrors: 0 },
+  },
+  {
+    slug: 'security',
+    title: 'Acme Cloud — Security Review',
+    score: 68,
+    state: 'ui_obstruction',
+    summary: 'Security review found a modal-style policy banner that may obstruct agent actions until acknowledged.',
+    html: demoDocument('Security Review', 'Agent policy checkpoint', 'Accept Policy', 'View Details', 'A required policy banner is layered above the main workflow.', 'Dismiss later'),
+    nodes: [
+      demoNode('demo-policy', 'interactive', 'Accept Policy', { x: 96, y: 352, width: 164, height: 48 }, ['policy-gate']),
+      demoNode('demo-details', 'interactive', 'View Details', { x: 276, y: 352, width: 140, height: 48 }),
+      demoNode('demo-policy-copy', 'content', 'Agent policy checkpoint', { x: 88, y: 138, width: 510, height: 60 }),
+    ],
+    actionItems: [{
+      severity: 'critical',
+      title: 'Policy banner blocks the flow',
+      detail: 'The demo page includes a policy checkpoint above the primary workflow.',
+      agentInstruction: 'Use compile_verified_action to target the policy acknowledgement before continuing automation.',
+    }],
+    signals: { interactiveElements: 2, forms: 0, headings: 3, imagesMissingAlt: 0, securityFlags: ['policy-gate'], recentNetworkErrors: 0 },
+  },
+];
+
+function demoNode(
+  id: string,
+  type: string,
+  text: string,
+  rect: { x: number; y: number; width: number; height: number },
+  securityFlags?: string[]
+): SemanticNode {
+  return { id, type, text, rect, securityFlags, score: securityFlags?.length ? 0.64 : 0.92 };
+}
+
+function demoDocument(kicker: string, headline: string, primary: string, secondary: string, body: string, tertiary: string): string {
+  return `<!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <style>
+        body { margin: 0; font-family: Inter, ui-sans-serif, system-ui; color: #f8fafc; background: radial-gradient(circle at 20% 10%, #3458ff55, transparent 32%), linear-gradient(135deg, #080b14, #121a2c); }
+        main { min-height: 100vh; padding: 34px 88px; box-sizing: border-box; }
+        nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 76px; }
+        .brand { font-weight: 800; letter-spacing: -0.03em; }
+        .links { display: flex; gap: 16px; }
+        a, button { color: inherit; border: 1px solid #ffffff24; background: #ffffff0e; border-radius: 12px; padding: 12px 18px; font-weight: 700; }
+        .hero { max-width: 720px; }
+        .eyebrow { color: #9dbbff; text-transform: uppercase; letter-spacing: .16em; font-size: 12px; font-weight: 800; }
+        h1 { font-size: 58px; line-height: 0.96; margin: 18px 0; letter-spacing: -0.055em; }
+        p { color: #aab7cf; font-size: 18px; line-height: 1.6; max-width: 620px; }
+        .actions { display: flex; gap: 16px; margin-top: 34px; }
+        .primary { background: linear-gradient(135deg, #b8d5ff, #8b5cf6); color: #07101d; border: 0; box-shadow: 0 22px 70px #6ea8ff33; }
+        .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 70px; }
+        .card { border: 1px solid #ffffff1f; background: #ffffff0a; border-radius: 20px; padding: 22px; min-height: 112px; }
+        .card strong { display: block; margin-bottom: 10px; }
+      </style>
+    </head>
+    <body>
+      <main>
+        <nav><div class="brand">Acme Cloud</div><div class="links"><a>${secondary}</a><a>${tertiary}</a></div></nav>
+        <section class="hero"><div class="eyebrow">${kicker}</div><h1>${headline}</h1><p>${body}</p><div class="actions"><button class="primary">${primary}</button><button>${secondary}</button></div></section>
+        <section class="cards"><div class="card"><strong>Signals</strong><span>DOM, network, and state forensics</span></div><div class="card"><strong>Agent Brief</strong><span>Direct instructions for coding agents</span></div><div class="card"><strong>Verification</strong><span>Replayable analysis and evidence</span></div></section>
+      </main>
+    </body>
+  </html>`;
+}
+
 // ─── Hook ────────────────────────────────────────────────────────────
 
 interface GatewayOptions {
@@ -148,6 +287,73 @@ function makeOfflineAnalysis(targetUrl: string): AgentPageAnalysis {
   };
 }
 
+function demoPageUrl(page: DemoPage): string {
+  return `data:text/html;charset=utf-8,${encodeURIComponent(page.html)}`;
+}
+
+function makeDemoAnalysis(page: DemoPage, step: number, total: number): AgentPageAnalysis {
+  const finalUrl = `demo://${page.slug}`;
+  const diagnosis: Diagnosis = {
+    state: page.state,
+    confidence: page.state === 'ready' ? 0.92 : 0.86,
+    summary: page.summary,
+    evidence: [
+      `Demo step ${step} of ${total}: ${page.title}`,
+      `${page.signals.interactiveElements} interactive controls detected.`,
+      page.signals.securityFlags.length > 0 ? `Flags: ${page.signals.securityFlags.join(', ')}` : 'No security flags on this step.',
+    ],
+    recommendations: page.actionItems.map(item => item.agentInstruction),
+    signals: {
+      actionableElements: page.signals.interactiveElements,
+      recentNetworkErrors: page.signals.recentNetworkErrors,
+      invalidFields: page.state === 'validation_blocked' ? 2 : 0,
+      obstructiveOverlays: page.state === 'ui_obstruction' ? 1 : 0,
+    },
+    recommendedNextAction: {
+      tool: page.state === 'ready' ? 'compile_verified_action' : 'diagnose_agent_state',
+      reason: page.actionItems[0]?.agentInstruction || 'Continue the walkthrough.',
+    },
+  };
+
+  const codingAgentBrief = [
+    '# Splice Guided Demo',
+    '',
+    `Step: ${step}/${total} — ${page.title}`,
+    `Target: ${finalUrl}`,
+    `Score: ${page.score}/100`,
+    `State: ${diagnosis.state} (${Math.round((diagnosis.confidence || 0) * 100)}% confidence)`,
+    '',
+    '## Summary',
+    page.summary,
+    '',
+    '## Coding Agent Actions',
+    ...page.actionItems.map((item, index) => `${index + 1}. [${item.severity.toUpperCase()}] ${item.agentInstruction}`),
+  ].join('\n');
+
+  return {
+    target: {
+      requestedUrl: finalUrl,
+      resolvedUrl: finalUrl,
+      finalUrl,
+      title: page.title,
+      reachable: true,
+      resolutionTried: DEMO_PAGES.slice(0, step).map(item => `demo://${item.slug}`),
+    },
+    summary: page.summary,
+    score: page.score,
+    generatedAt: Date.now(),
+    signals: page.signals,
+    diagnosis,
+    actionItems: page.actionItems,
+    codingAgentBrief,
+    semanticTree: {
+      id: 'demo-root',
+      type: 'root',
+      children: page.nodes,
+    },
+  };
+}
+
 export function useSpliceGateway(options: GatewayOptions = {}) {
   const [connected, setConnected] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
@@ -157,6 +363,7 @@ export function useSpliceGateway(options: GatewayOptions = {}) {
   const [semanticTree, setSemanticTree] = useState<SemanticNode | null>(null);
   const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
   const [analysis, setAnalysis] = useState<AgentPageAnalysis | null>(null);
+  const [demoRunning, setDemoRunning] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const messageResolvers = useRef<Map<string, (value: any) => void>>(new Map());
@@ -331,9 +538,40 @@ export function useSpliceGateway(options: GatewayOptions = {}) {
     return sendCommand('interact', { elementId, action, value });
   }, [sendCommand]);
 
+  const runDemo = useCallback(async () => {
+    if (demoRunning) return;
+
+    setDemoRunning(true);
+    setScreenshot(null);
+
+    const feedBuffer: TelemetryEvent[] = [];
+    for (let index = 0; index < DEMO_PAGES.length; index++) {
+      const page = DEMO_PAGES[index];
+      const step = index + 1;
+      const demoAnalysis = makeDemoAnalysis(page, step, DEMO_PAGES.length);
+
+      feedBuffer.unshift({ type: 'demo_navigation', detail: `Navigated to ${page.title}`, timestamp: Date.now() });
+      feedBuffer.unshift({ type: 'demo_analysis', detail: `Analyzed ${page.slug}: score ${page.score}/100`, timestamp: Date.now() + 1 });
+
+      setPreviewUrl(demoPageUrl(page));
+      setSessionStatus({
+        url: demoAnalysis.target.finalUrl,
+        title: page.title,
+        liveFeed: { feed: feedBuffer.slice(0, 20) },
+      });
+      setSemanticTree(demoAnalysis.semanticTree || null);
+      setDiagnosis(demoAnalysis.diagnosis);
+      setAnalysis(demoAnalysis);
+
+      await new Promise(resolve => setTimeout(resolve, 1600));
+    }
+
+    setDemoRunning(false);
+  }, [demoRunning]);
+
   // ── Live polling (only when actually connected to backend) ──
   useEffect(() => {
-    if (!connected || demoMode) return;
+    if (!connected || demoMode || demoRunning) return;
 
     let isActive = true;
 
@@ -359,7 +597,7 @@ export function useSpliceGateway(options: GatewayOptions = {}) {
 
     poll();
     return () => { isActive = false; };
-  }, [connected, demoMode, sendCommand]);
+  }, [connected, demoMode, demoRunning, sendCommand]);
 
   // ── Offline state (honest preview mode; real analysis requires gateway) ──
   useEffect(() => {
@@ -393,8 +631,10 @@ export function useSpliceGateway(options: GatewayOptions = {}) {
     semanticTree,
     diagnosis,
     analysis,
+    demoRunning,
     navigate,
     analyzePage,
+    runDemo,
     interact,
   };
 }

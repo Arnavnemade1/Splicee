@@ -20,7 +20,7 @@ function flattenTree(node: SemanticNode): SemanticNode[] {
 function App() {
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showHighlights, setShowHighlights] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState<'diagnostics' | 'guide' | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -36,7 +36,9 @@ function App() {
     semanticTree,
     diagnosis,
     analysis,
-    analyzePage
+    demoRunning,
+    analyzePage,
+    runDemo
   } = useSpliceGateway();
 
   // Calculate scale factor when screenshot / viewport size changes
@@ -93,6 +95,12 @@ function App() {
           </div>
         </div>
         <div className="header-status">
+          <button className="header-button" onClick={runDemo} disabled={demoRunning}>
+            {demoRunning ? 'Running Demo…' : 'Run Demo'}
+          </button>
+          <button className="header-button subtle" onClick={() => setModalOpen('guide')}>
+            Usage Guide
+          </button>
           <div
             className="status-badge"
             style={{
@@ -162,8 +170,12 @@ function App() {
             <button
               className="analyze-button"
               onClick={() => analyzePage(urlInput || sessionStatus?.url, 'Analyze this application and produce concrete coding-agent feedback')}
+              disabled={demoRunning}
             >
               Analyze
+            </button>
+            <button className="demo-button" onClick={runDemo} disabled={demoRunning}>
+              {demoRunning ? 'Demo…' : 'Demo'}
             </button>
             {demoMode && (
               <div className="demo-indicator">
@@ -329,7 +341,7 @@ function App() {
               )}
 
               <div className="action-grid">
-                <button className="btn-secondary" onClick={() => setModalOpen(true)}>
+                <button className="btn-secondary" onClick={() => setModalOpen('diagnostics')}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                   Analyze
                 </button>
@@ -369,7 +381,7 @@ function App() {
               <button
                 className="btn-secondary"
                 style={{width: '100%', padding: '12px', background: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.3)', color: 'var(--accent-blue)'}}
-                onClick={() => setModalOpen(true)}
+                onClick={() => setModalOpen('diagnostics')}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                 View Full Report
@@ -381,43 +393,89 @@ function App() {
       </main>
 
       {/* Diagnostics Modal */}
-      <div className={`modal-overlay ${modalOpen ? 'open' : ''}`} onClick={() => setModalOpen(false)}>
+      <div className={`modal-overlay ${modalOpen ? 'open' : ''}`} onClick={() => setModalOpen(null)}>
         <div className="modal-content" onClick={event => event.stopPropagation()}>
           <div className="modal-header">
-            <div className="modal-title">Live Diagnostics</div>
-            <button className="modal-close" onClick={() => setModalOpen(false)}>&times;</button>
+            <div className="modal-title">{modalOpen === 'guide' ? 'Nexus Core Usage Guide' : 'Live Diagnostics'}</div>
+            <button className="modal-close" onClick={() => setModalOpen(null)}>&times;</button>
           </div>
           <div className="modal-body">
-            <h3 style={{marginBottom: 12, fontSize: 18}}>Current Session State</h3>
-            <p style={{color: 'var(--text-secondary)', marginBottom: 24, fontSize: 14}}>
-              {diagnosis?.summary || 'No recent diagnosis.'}
-            </p>
+            {modalOpen === 'guide' ? (
+              <div className="guide-content">
+                <section>
+                  <h3>Quick Start</h3>
+                  <ol>
+                    <li>Start your app locally, preferably on <code>localhost:8080</code>. Nexus also tries <code>5173</code>, <code>3000</code>, <code>4173</code>, and other common ports.</li>
+                    <li>Start Splice with the WebSocket gateway enabled.</li>
+                    <li>Open Nexus Core, enter <code>localhost</code>, a port like <code>8080</code>, or a full URL, then press <strong>Analyze</strong>.</li>
+                    <li>Read the Agent Brief and use the MCP tool <code>analyze_page_for_agent</code> when a coding agent needs the same report directly.</li>
+                  </ol>
+                </section>
 
-            {diagnosis?.recommendations && (
-              <div style={{marginBottom: 20}}>
-                <h4 style={{fontSize: 14, marginBottom: 8, color: 'var(--text-primary)'}}>Recommendations</h4>
-                <ul style={{paddingLeft: 20, color: 'var(--text-secondary)', fontSize: 13}}>
-                  {diagnosis.recommendations.map((rec, i) => (
-                    <li key={i} style={{marginBottom: 4}}>{rec}</li>
-                  ))}
-                </ul>
+                <section>
+                  <h3>Gateway Configuration</h3>
+                  <pre className="modal-report">{`# default gateway
+SPLICE_ENABLE_OPENCLAW=1 npm start
+
+# custom gateway port
+SPLICE_ENABLE_OPENCLAW=1 OPENCLAW_GATEWAY_PORT=18789 npm start
+
+# frontend override when deployed elsewhere
+VITE_SPLICE_GATEWAY_URL=ws://127.0.0.1:18789 npm run build
+
+# custom local app discovery order
+SPLICE_LOCAL_APP_PORTS=8080,5173,3000 npm start`}</pre>
+                </section>
+
+                <section>
+                  <h3>Discord Alerts</h3>
+                  <ol>
+                    <li>Create a Discord channel webhook from <strong>Channel Settings → Integrations → Webhooks</strong>.</li>
+                    <li>Set <code>DISCORD_WEBHOOK_URL</code> before starting Splice, or call the MCP tool <code>configure_discord_webhook</code>.</li>
+                    <li>Use <code>send_discord_update</code> for manual status cards. Security audits also send alerts automatically when configured.</li>
+                  </ol>
+                  <pre className="modal-report">{`DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..." SPLICE_ENABLE_OPENCLAW=1 npm start`}</pre>
+                </section>
+
+                <section>
+                  <h3>Demo Mode</h3>
+                  <p>Use <strong>Run Demo</strong> to watch Nexus step through landing, pricing, checkout, and security-review pages. It is a guided local walkthrough, separate from real Playwright analysis.</p>
+                </section>
               </div>
+            ) : (
+              <>
+                <h3 style={{marginBottom: 12, fontSize: 18}}>Current Session State</h3>
+                <p style={{color: 'var(--text-secondary)', marginBottom: 24, fontSize: 14}}>
+                  {diagnosis?.summary || 'No recent diagnosis.'}
+                </p>
+
+                {diagnosis?.recommendations && (
+                  <div style={{marginBottom: 20}}>
+                    <h4 style={{fontSize: 14, marginBottom: 8, color: 'var(--text-primary)'}}>Recommendations</h4>
+                    <ul style={{paddingLeft: 20, color: 'var(--text-secondary)', fontSize: 13}}>
+                      {diagnosis.recommendations.map((rec, i) => (
+                        <li key={i} style={{marginBottom: 4}}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {analysis?.codingAgentBrief && (
+                  <div style={{marginBottom: 20}}>
+                    <h4 style={{fontSize: 14, marginBottom: 8, color: 'var(--text-primary)'}}>Coding Agent Brief</h4>
+                    <pre className="modal-report">{analysis.codingAgentBrief}</pre>
+                  </div>
+                )}
+
+                <div style={{background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, border: '1px solid var(--border-subtle)', marginBottom: 20, maxHeight: 300, overflowY: 'auto'}}>
+                  <pre style={{fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--accent-green)', margin: 0, whiteSpace: 'pre-wrap'}}>
+                    {JSON.stringify(analysis || diagnosis, null, 2)}
+                  </pre>
+                </div>
+              </>
             )}
 
-            {analysis?.codingAgentBrief && (
-              <div style={{marginBottom: 20}}>
-                <h4 style={{fontSize: 14, marginBottom: 8, color: 'var(--text-primary)'}}>Coding Agent Brief</h4>
-                <pre className="modal-report">{analysis.codingAgentBrief}</pre>
-              </div>
-            )}
-
-            <div style={{background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, border: '1px solid var(--border-subtle)', marginBottom: 20, maxHeight: 300, overflowY: 'auto'}}>
-              <pre style={{fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--accent-green)', margin: 0, whiteSpace: 'pre-wrap'}}>
-                {JSON.stringify(analysis || diagnosis, null, 2)}
-              </pre>
-            </div>
-
-            <button className="btn-primary" onClick={() => setModalOpen(false)}>Acknowledge & Close</button>
+            <button className="btn-primary" onClick={() => setModalOpen(null)}>Acknowledge & Close</button>
           </div>
         </div>
       </div>
