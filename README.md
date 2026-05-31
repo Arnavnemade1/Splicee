@@ -4,7 +4,7 @@
 
 ### Browser cognition infrastructure for autonomous coding agents
 
-[![CI](https://github.com/NikMuv142/Splice/workflows/CI/badge.svg)](https://github.com/NikMuv142/Splice/actions)
+[![CI](https://github.com/Arnavnemade1/Splicee/actions/workflows/main.yml/badge.svg)](https://github.com/Arnavnemade1/Splicee/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6+-3178c6.svg)](https://www.typescriptlang.org/)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776ab.svg)](https://www.python.org/)
@@ -12,7 +12,7 @@
 
 Splice gives AI coding agents a browser they can understand, audit, and recover inside. It does not stop at screenshots, raw DOM, or accessibility snapshots. Splice diagnoses browser state, compiles intent into verified actions, redacts hostile page content, and records the evidence agents need to keep moving safely.
 
-[Quick Start](#quick-start) · [Why Splice](#why-splice) · [Flagship Features](#flagship-features) · [OpenClaw](#openclaw-gateway) · [Architecture](#architecture) · [Security](#security-model)
+[Quick Start](#quick-start) · [Why Splice](#why-splice) · [Flagship Features](#flagship-features) · [Nexus Core](#nexus-core) · [OpenClaw](#openclaw-gateway) · [Architecture](#architecture) · [Security](#security-model)
 
 </div>
 
@@ -135,9 +135,50 @@ The local dashboard turns a browser run into an inspectable operations console:
 - Security audit findings
 - Console and network telemetry
 
+### Nexus Core
+
+[Nexus Core](nexus-core/) is the React mission-control dashboard for live browser analysis. It connects to the local OpenClaw WebSocket gateway and shows:
+
+- Live telemetry and session status
+- Semantic element highlights over screenshots or page previews
+- State forensics, analysis scores, and coding-agent action items
+- A built-in usage guide and guided demo walkthrough when the gateway is offline
+
+Start the gateway, then run Nexus Core locally:
+
+```bash
+# terminal 1 — Splice MCP server with gateway enabled
+npm run build
+SPLICE_ENABLE_OPENCLAW=1 node dist/index.js
+
+# terminal 2 — Nexus Core UI
+cd nexus-core
+npm install
+npm run dev
+```
+
+Open the Vite dev server (typically `http://localhost:5173`), enter `localhost`, a port like `8080`, or a full URL, then click **Analyze**. The same analysis is available to coding agents through the MCP tool `analyze_page_for_agent`.
+
+Use **Run Demo** in Nexus Core to step through a guided offline walkthrough without Playwright. For real DOM, network, and screenshot analysis, keep the gateway running.
+
+Gateway and frontend overrides:
+
+```bash
+# custom gateway port
+SPLICE_ENABLE_OPENCLAW=1 OPENCLAW_GATEWAY_PORT=18789 node dist/index.js
+
+# point a deployed Nexus build at a remote gateway
+cd nexus-core && VITE_SPLICE_GATEWAY_URL=ws://127.0.0.1:18789 npm run build
+
+# custom local app discovery order for analyze_page_for_agent
+SPLICE_LOCAL_APP_PORTS=8080,5173,3000 node dist/index.js
+```
+
+See [nexus-core/README.md](nexus-core/README.md) for UI-specific setup.
+
 ### OpenClaw Gateway
 
-Splice ships an optional local [OpenClaw](https://github.com/NikMuv142/Splice) control gateway that lets OpenClaw-compatible agents connect directly over a low-latency WebSocket channel. The gateway is **disabled by default** and never opens a network socket unless explicitly opted in.
+Splice ships an optional local OpenClaw control gateway that lets OpenClaw-compatible agents and Nexus Core connect directly over a low-latency WebSocket channel. The gateway is **disabled by default** and never opens a network socket unless explicitly opted in.
 
 ```bash
 # Enable at startup
@@ -210,9 +251,11 @@ flowchart LR
     Security --> MCP
     Core -. "on hold" .-> Discord["Discord Webhook"]
     MCP --> Agent
+    Gateway --> Nexus["Nexus Core Dashboard"]
+    Nexus --> Agent
 ```
 
-Splice uses a TypeScript core for browser control and a Python MCP wrapper for agent ecosystems that prefer Python entrypoints.
+Splice uses a TypeScript core for browser control and a Python MCP wrapper for agent ecosystems that prefer Python entrypoints. Nexus Core is the optional React dashboard that consumes the same gateway feed.
 
 ---
 
@@ -221,8 +264,8 @@ Splice uses a TypeScript core for browser control and a Python MCP wrapper for a
 ### Node MCP Server
 
 ```bash
-git clone https://github.com/NikMuv142/Splice.git
-cd Splice
+git clone https://github.com/Arnavnemade1/Splicee.git
+cd Splicee
 npm install
 npm run build
 node dist/index.js
@@ -231,8 +274,8 @@ node dist/index.js
 ### Python MCP Wrapper
 
 ```bash
-git clone https://github.com/NikMuv142/Splice.git
-cd Splice
+git clone https://github.com/Arnavnemade1/Splicee.git
+cd Splicee
 npm install
 npm run build
 cd python
@@ -247,7 +290,7 @@ splice-mcp
   "mcpServers": {
     "splice": {
       "command": "node",
-      "args": ["/absolute/path/to/Splice/dist/index.js"]
+      "args": ["/absolute/path/to/Splicee/dist/index.js"]
     }
   }
 }
@@ -260,7 +303,7 @@ Splice can be used from any application that supports the Model Context Protocol
 Use the built server entrypoint:
 
 ```bash
-node /absolute/path/to/Splice/dist/index.js
+node /absolute/path/to/Splicee/dist/index.js
 ```
 
 Or, if the app prefers a Python entrypoint:
@@ -276,7 +319,7 @@ Typical MCP client config shape:
   "mcpServers": {
     "splice": {
       "command": "node",
-      "args": ["/absolute/path/to/Splice/dist/index.js"]
+      "args": ["/absolute/path/to/Splicee/dist/index.js"]
     }
   }
 }
@@ -470,9 +513,10 @@ Then use these tool calls in your MCP client:
 3. Connect your MCP client to Splice.
 4. Call `navigate` to open your app.
 5. Call `get_semantic_tree_optimized` or `diagnose_agent_state` to inspect the current page.
-6. Call `compile_verified_action` with `execute: true` to safely try an interaction.
-7. Call `run_security_audit` for a browser-level security pass.
-8. Call `generate_observability_report` to get a local HTML Command Center report.
+6. Call `analyze_page_for_agent` for a full coding-agent report with DOM, diagnostics, and action items.
+7. Call `compile_verified_action` with `execute: true` to safely try an interaction.
+8. Call `run_security_audit` for a browser-level security pass.
+9. Call `generate_observability_report` to get a local HTML Command Center report.
 
 #### Good targets to try first
 
@@ -521,6 +565,9 @@ The command prints the exact report paths when it finishes.
 | `SPLICE_ENABLE_OPENCLAW` | `0` | Set to `1` to start the OpenClaw WebSocket gateway on boot. |
 | `OPENCLAW_GATEWAY_PORT` | `18789` | Override the OpenClaw gateway port. Only used if `SPLICE_ENABLE_OPENCLAW=1`. |
 | `DISCORD_WEBHOOK_URL` | _(unset)_ | Full Discord webhook URL for automated event notifications. _(on hold)_ |
+| `SPLICE_LOCAL_APP_PORTS` | `8080,5173,3000,4173,...` | Comma-separated local ports tried by `analyze_page_for_agent` when no URL is provided. |
+| `SPLICE_COMMAND_CENTER_PORT` | `4821` | Preferred localhost port for the HTML Command Center server. |
+| `VITE_SPLICE_GATEWAY_URL` | _(unset)_ | WebSocket URL for Nexus Core builds, e.g. `ws://127.0.0.1:18789`. |
 
 ---
 
@@ -529,6 +576,7 @@ The command prints the exact report paths when it finishes.
 Core browser tools:
 
 - `navigate`
+- `analyze_page_for_agent`
 - `get_semantic_tree_optimized`
 - `interact`
 - `diagnose_agent_state`
@@ -603,7 +651,7 @@ Splice follows a zero-trust browser posture:
 - The OpenClaw gateway binds to `127.0.0.1` only and is **disabled by default** — it must be explicitly opted in via `SPLICE_ENABLE_OPENCLAW=1` or `toggle_openclaw_gateway`.
 - The security auditor actively scans for unsecured OpenClaw ports, DOM-level WebSocket script injections, and unverified high-privilege skills.
 
-Please report vulnerabilities privately. See [SECURITY.md](SECURITY.md).
+Please report vulnerabilities privately through [GitHub Security Advisories](https://github.com/Arnavnemade1/Splicee/security/advisories/new).
 
 ---
 
@@ -621,8 +669,8 @@ Please report vulnerabilities privately. See [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
-Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before opening a pull request.
+Contributions are welcome. Open an issue or pull request on [GitHub](https://github.com/Arnavnemade1/Splicee).
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT

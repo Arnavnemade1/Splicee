@@ -1,73 +1,65 @@
-# React + TypeScript + Vite
+# Nexus Core
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Mission-control dashboard for [Splice](../README.md). Nexus Core connects to the local OpenClaw WebSocket gateway and surfaces live browser analysis, semantic highlights, and coding-agent feedback.
 
-Currently, two official plugins are available:
+## Quick start
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+# from the repo root — start Splice with the gateway enabled
+npm run build
+SPLICE_ENABLE_OPENCLAW=1 node dist/index.js
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# in another terminal — start the UI
+cd nexus-core
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Open the Vite dev URL (typically `http://localhost:5173`), enter a target such as `localhost`, `8080`, or a full URL, then click **Analyze**.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Offline demo
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+If the gateway is not running, Nexus Core still works in preview mode:
+
+- **Run Demo** steps through a guided walkthrough (landing, pricing, checkout, security review)
+- **Usage Guide** documents gateway setup, Discord alerts, and MCP integration
+
+Real Playwright analysis, screenshots, and agent briefs require the gateway.
+
+## Configuration
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `VITE_SPLICE_GATEWAY_URL` | `ws://127.0.0.1:18789` in dev | WebSocket URL for production builds |
+| `OPENCLAW_GATEWAY_PORT` | `18789` | Set on the Splice server when starting the gateway |
+| `SPLICE_LOCAL_APP_PORTS` | common dev ports | Port discovery order for `analyze_page_for_agent` on the server |
+
+Example production build with a custom gateway:
+
+```bash
+VITE_SPLICE_GATEWAY_URL=ws://127.0.0.1:18789 npm run build
+npm run preview
+```
+
+## MCP equivalent
+
+Coding agents can request the same report without the UI:
+
+```json
+{
+  "name": "analyze_page_for_agent",
+  "arguments": {
+    "targetUrl": "http://localhost:8080",
+    "intent": "Analyze this application and produce concrete coding-agent feedback"
+  }
+}
+```
+
+## Scripts
+
+```bash
+npm run dev      # local development with HMR
+npm run build    # production build to dist/
+npm run preview  # serve the production build locally
+npm run lint     # ESLint
 ```
